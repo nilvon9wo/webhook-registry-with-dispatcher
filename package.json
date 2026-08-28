@@ -1,0 +1,17 @@
+{
+  "type": "module",
+  "devDependencies": {
+    "eslint": "10.9.1",
+    "prettier": "3.9.6",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1119.0",
+    "@aws-sdk/lib-dynamodb": "3.1116.0"
+  }
+}

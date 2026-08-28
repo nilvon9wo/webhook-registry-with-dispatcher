@@ -179,19 +179,28 @@ The challenge does not require this additional complexity.
 
 ### DynamoDB
 
-The design should follow access patterns.
+The DynamoDB design should follow the application's required access patterns.
 
-Important reads are:
+An **access pattern** describes how the application needs to retrieve or manipulate data. It is a requirement for database access, not a DynamoDB configuration object or query syntax. The actual DynamoDB keys, indexes, and table structure should be selected to support these patterns efficiently.
 
-1. Find subscriptions for an event type.
-2. Retrieve an event by ID.
-3. Find deliveries for an event.
-4. Find deliveries for a subscription.
-5. Find retryable/incomplete deliveries.
+The important access patterns for this application are:
 
-Whether these are represented by separate tables or a single-table design is an implementation decision.
+| Access Pattern                       | Input                               | Expected Result                                     |
+| ------------------------------------ | ----------------------------------- | --------------------------------------------------- |
+| Get subscription                     | `subscriptionId`                    | One subscription                                    |
+| List subscriptions                   | None                                | All subscriptions                                   |
+| Find subscriptions by event type     | `eventType`                         | All subscriptions matching the event type           |
+| Get event                            | `eventId`                           | One event                                           |
+| Get deliveries for event             | `eventId`                           | All deliveries associated with the event            |
+| Get delivery                         | `deliveryId`                        | One delivery                                        |
+| Get deliveries for subscription      | `subscriptionId`                    | Deliveries associated with the subscription         |
+| Find retryable/incomplete deliveries | Delivery status and/or retry timing | Deliveries eligible for recovery or another attempt |
 
-For a four-hour challenge, choose the design that is easiest to implement correctly and explain clearly.
+These access patterns are the requirements that the DynamoDB design must support. The implementation should determine the appropriate partition keys, sort keys, and secondary indexes based on them.
+
+Whether these are represented by separate tables or a single-table design is an implementation decision. For a four-hour challenge, choose the design that is easiest to implement correctly, test, explain, and maintain. Do not introduce a more sophisticated DynamoDB modeling strategy merely for its own sake.
+
+The implementation should document the resulting key/index design and explain how each required access pattern is supported.
 
 ### Railway
 
@@ -313,7 +322,7 @@ process crashes before recording success
 
 On recovery, the system may send the same event again.
 
-Therefore subscribers should use the stable event ID for idempotency.
+Therefore, subscribers should use the stable event ID for idempotency.
 
 The system must not claim exactly-once delivery.
 

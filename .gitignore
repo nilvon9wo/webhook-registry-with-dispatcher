@@ -1,1 +1,159 @@
-/.idea/
+```gitignore
+# ============================================================
+# Node.js
+# ============================================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# npm cache / temporary files
+.npm/
+
+# ============================================================
+# Environment / Secrets
+# ============================================================
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local secrets / credentials
+*.pem
+*.key
+*.p12
+*.pfx
+
+# AWS local credentials/config should never be committed
+.aws/
+
+# ============================================================
+# TypeScript / Build Output
+# ============================================================
+
+dist/
+build/
+out/
+
+# TypeScript incremental compilation
+*.tsbuildinfo
+
+# ============================================================
+# Test / Coverage
+# ============================================================
+
+coverage/
+.nyc_output/
+
+# Vitest
+.vitest/
+
+# ============================================================
+# Logs
+# ============================================================
+
+logs/
+*.log
+
+# ============================================================
+# JetBrains / Rider
+# ============================================================
+
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Rider local history
+.localhistory/
+
+# ============================================================
+# Visual Studio Code
+# ============================================================
+
+.vscode/
+
+# Keep shared VS Code configuration if desired.
+# Uncomment these if the project decides to commit them:
+#
+# !.vscode/settings.json
+# !.vscode/extensions.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+
+# ============================================================
+# OS Files
+# ============================================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# ============================================================
+# Temporary / Backup Files
+# ============================================================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.orig
+
+# ============================================================
+# Docker / Local Development
+# ============================================================
+
+# Local Docker volumes/configuration
+.docker/
+
+# ============================================================
+# AWS / Infrastructure
+# ============================================================
+
+# SAM CLI
+.aws-sam/
+
+# Serverless Framework
+.serverless/
+
+# Terraform state, in case Terraform is experimented with locally.
+# CloudFormation templates themselves should NOT be ignored.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+
+# ============================================================
+# Generated / Local Development Artifacts
+# ============================================================
+
+tmp/
+temp/
+
+# Local DynamoDB data, if DynamoDB Local is used
+.dynamodb/
+
+# LocalStack state
+.localstack/
+
+# ============================================================
+# Challenge / Submission Artifacts
+# ============================================================
+
+# Generated ZIP archives should not normally be committed
+*.zip
+```

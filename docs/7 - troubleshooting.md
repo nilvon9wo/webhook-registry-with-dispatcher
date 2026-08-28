@@ -23,7 +23,7 @@ Explain the likely root cause.
 
 Before changing behavior, re-read the relevant sections of:
 
-- docs/2 - spec.md;
+- docs/1 - spec.md;
 - docs/3 - steering-rules.md;
 - docs/4 - architecture.md;
 - docs/5 - testing.md.
@@ -117,7 +117,7 @@ Do not make changes yet.
 
 Analyze the failure against:
 
-- docs/2 - spec.md
+- docs/1 - spec.md
 - docs/3 - steering-rules.md
 - docs/4 - architecture.md
 - docs/5 - testing.md
@@ -154,7 +154,7 @@ Determine whether:
 
 Do not modify the test merely to make it pass.
 
-Compare the expected behavior with docs/2 - spec.md.
+Compare the expected behavior with docs/1 - spec.md.
 
 If the production code is wrong, fix the production code.
 

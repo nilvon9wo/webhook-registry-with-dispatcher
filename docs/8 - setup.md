@@ -115,51 +115,58 @@ The repository should contain an appropriate `.gitignore`.
 
 # 5. IDE
 
-## Recommended: JetBrains Rider
+## Recommended: JetBrains WebStorm
 
-Rider is an excellent choice for this project, particularly if already installed and familiar.
+WebStorm is the preferred IDE for this project. It is specifically designed for JavaScript/TypeScript and Node.js development and provides everything needed for this challenge.
 
 Current stable release:
 
-```text
-JetBrains Rider 2026.2.1
-```
+### JetBrains WebStorm 2026.2.1
 
-The project is TypeScript/Node.js, so Rider is not required specifically for .NET functionality. Its JavaScript/TypeScript support is sufficient.
+Useful WebStorm capabilities:
 
-Make sure the Node.js runtime configured by Rider points to the intended Node 24 LTS installation.
+- TypeScript/JavaScript language support;
+- Node.js and npm integration;
+- npm script execution;
+- integrated terminal;
+- debugger;
+- Vitest/test runner integration;
+- Git integration;
+- ESLint and Prettier integration;
+- JSON/YAML support;
+- integrated HTTP Client for API testing;
+- Docker support if Docker is used;
+- code inspections and refactoring.
 
-Useful Rider capabilities:
+Make sure the Node.js runtime configured by WebStorm points to the intended Node 24 LTS installation.
 
-* TypeScript language support;
-* npm scripts;
-* integrated terminal;
-* debugger;
-* test runner;
-* Git integration;
-* code inspections;
-* formatting.
+The integrated HTTP Client is particularly useful for this challenge because API requests can be kept as .http files in the repository, providing a convenient way to manually exercise endpoints without requiring Postman or another API client.
 
-Do not install a separate IDE solely for this challenge if Rider is already working.
+### Alternative: Visual Studio Code
 
-## Alternative: Visual Studio Code
-
-VS Code is also an excellent choice, particularly if using AI coding agents directly in the editor.
+Visual Studio Code is also a suitable choice for the project, particularly if using an AI coding agent through its editor integration.
 
 Current stable release as of this document:
 
-```text
-Visual Studio Code 1.134
-```
+`Visual Studio Code 1.134`
 
-Useful extensions:
+Useful extensions include:
 
-* ESLint
-* Prettier
-* AWS Toolkit
-* TypeScript/JavaScript language support
+- ESLint;
+- Prettier;
+- AWS Toolkit;
+- TypeScript/JavaScript language support.
 
-Do not install both Rider and VS Code solely for this project. Use whichever provides the smoother workflow.
+Use either WebStorm or VS Code. There is no need to install or maintain multiple IDEs solely for this project.
+
+### Other JetBrains IDEs
+
+Rider and IntelliJ IDEA are capable of supporting parts of this project, but neither is the preferred choice:
+
+- Rider is primarily targeted at .NET development and provides more functionality than this TypeScript-only project requires.
+- IntelliJ IDEA Community is primarily targeted at Java development and is therefore not the most appropriate JetBrains IDE for this project.
+
+If the challenge were implemented in Java instead of TypeScript, IntelliJ IDEA would be the natural JetBrains choice.
 
 ---
 
@@ -191,12 +198,12 @@ Claude Code is particularly suitable for this challenge because it can operate d
 
 The important point is not which AI is used, but that its work is governed by:
 
-* `docs/spec.md`
-* `docs/plan.md`
-* `docs/steering-rules.md`
-* `docs/architecture.md`
-* `docs/testing.md`
-* `docs/prompts.md`
+* `docs/1 - spec.md`
+* `docs/2 - plan.md`
+* `docs/3 - steering-rules.md`
+* `docs/4 - architecture.md`
+* `docs/5 - testing.md`
+* `docs/6 - prompts.md`
 
 Do not let the AI treat the repository as an empty greenfield project after these documents have been established.
 
@@ -315,7 +322,7 @@ The development identity needs enough access to:
 
 A broad development permission set such as `PowerUserAccess` is acceptable for a personal challenge account if necessary, although a narrower custom permission set is preferable.
 
-For a production system, use least privilege.
+For a production system, use the least privilege.
 
 Do not give the running application unnecessary administrative AWS permissions.
 
@@ -512,7 +519,7 @@ These should be installed locally in the project rather than globally.
 The following versions are current stable versions at the time this document was prepared:
 
 | Package    | Version | Purpose                         |
-| ---------- | ------: | ------------------------------- |
+|------------|--------:|---------------------------------|
 | TypeScript |   7.0.2 | TypeScript compiler             |
 | Vitest     |  4.1.11 | Unit/integration testing        |
 | ESLint     |  10.9.1 | Static analysis                 |
@@ -760,7 +767,7 @@ when it contains local secrets/configuration.
 
 # 27. Pre-Implementation Verification
 
-Before beginning the actual challenge implementation, verify all of the following.
+Before beginning the actual challenge implementation, verify all the following.
 
 ## Local Tools
 
@@ -840,7 +847,7 @@ Perform setup in this order:
 12. Install/configure the chosen AI coding agent.
 13. Initialize the Git repository.
 14. Verify the development environment.
-15. Start the AI-assisted implementation process using `docs/prompts.md`.
+15. Start the AI-assisted implementation process using `docs/6 - prompts.md`.
 
 ---
 

@@ -4,8 +4,8 @@ This document defines the intended sequence of AI prompts for implementing the W
 
 The AI should treat the following repository documents as authoritative:
 
-- `docs/1 - plan.md`
-- `docs/2 - spec.md`
+- `docs/1 - spec.md`
+- `docs/1 - spec.md`
 - `docs/3 - steering-rules.md`
 - `docs/4 - architecture.md`
 - `docs/5 - testing.md`
@@ -17,13 +17,34 @@ The implementation should remain within the stated four-hour challenge constrain
 # 1. Initial Project Assessment
 ## Prompt
 
-Read the following project documentation before making any changes:
+Read the repository before making any changes.
 
-- `docs/2 - spec.md`
-- `docs/1 - plan.md`
-- `docs/3 - steering-rules.md`
-- `docs/4 - architecture.md`
-- `docs/5 - testing.md`
+First inspect:
+- the repository directory structure;
+- all files under `docs/`;
+- the existing source and test directories;
+- `package.json`;
+- `package-lock.json`;
+- `tsconfig.json`;
+- `.gitignore`;
+- `README.md`;
+- `infrastructure/`;
+- any existing configuration files.
+
+The repository already contains project documentation and initial infrastructure created before this implementation phase. Do not assume that these files are empty, obsolete, or disposable.
+
+Treat the following documents as authoritative project guidance:
+- `docs/0 - SW Engineer task - WebhookRegistryTask.md` — original challenge statement;
+- `docs/1 - spec.md` — project specification;
+- `docs/2 - plan.md` — implementation plan;
+- `docs/3 - steering-rules.md` — coding and AI steering rules;
+- `docs/4 - architecture.md` — architectural decisions;
+- `docs/5 - testing.md` — testing strategy;
+- `docs/6 - prompts.md` — AI implementation workflow;
+- `docs/7 - troubleshooting.md` — known setup/troubleshooting information;
+- `docs/8 - setup.md` — development environment and AWS setup.
+
+Before changing anything, reconcile the current repository state against these documents and report any discrepancies.
 
 Do not write code yet.
 
@@ -83,7 +104,7 @@ Implement the core domain types and validation model for:
 - Event
 - Delivery
 
-Follow `docs/2 - spec.md` and `docs/3 - steering-rules.md`.
+Follow `docs/1 - spec.md` and `docs/3 - steering-rules.md`.
 
 Keep domain logic independent of HTTP and DynamoDB.
 
@@ -125,7 +146,7 @@ Run the full test suite.
 # 5. Implement Subscription CRUD
 ## Prompt
 
-Implement the `/subscriptions` API according to `docs/2 - spec.md`.
+Implement the `/subscriptions` API according to `docs/1 - spec.md`.
 
 Implement:
 
@@ -159,7 +180,7 @@ Do not proceed if the implementation introduces avoidable architectural coupling
 
 Implement the production persistence layer using DynamoDB.
 
-Use the access patterns documented in `docs/2 - spec.md` and `docs/4 - architecture.md`.
+Use the access patterns documented in `docs/1 - spec.md` and `docs/4 - architecture.md`.
 
 Before coding:
 
@@ -244,7 +265,7 @@ Do not implement external webhook delivery yet.
 # 9. Implement the Dispatcher
 ## Prompt
 
-Implement the asynchronous dispatcher according to docs/2 - spec.md.
+Implement the asynchronous dispatcher according to docs/1 - spec.md.
 
 For each event:
 
@@ -283,7 +304,7 @@ Each delivery should record at least:
 - HTTP status where available;
 - last error where available.
 
-Use the states documented in docs/2 - spec.md.
+Use the states documented in docs/1 - spec.md.
 
 Ensure state transitions are explicit and valid.
 
@@ -303,7 +324,7 @@ Do not introduce unnecessary state complexity.
 
 Implement bounded retry behavior for webhook delivery.
 
-Follow the rules in docs/2 - spec.md and docs/3 - steering-rules.md.
+Follow the rules in docs/1 - spec.md and docs/3 - steering-rules.md.
 
 Default policy:
 
@@ -506,8 +527,8 @@ Report:
 
 Perform a senior-engineer review of the complete implementation against:
 
-- docs/2 - spec.md
-- docs/1 - plan.md
+- docs/1 - spec.md
+- docs/1 - spec.md
 - docs/3 - steering-rules.md
 - docs/4 - architecture.md
 - docs/5 - testing.md
