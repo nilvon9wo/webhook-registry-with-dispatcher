@@ -74,6 +74,14 @@ This run uses `npm start` (see §2.3). On `PERSISTENCE=dynamodb` the records you
 create are real DynamoDB rows and survive every restart; §8.4 shows how to clear
 them. On `memory`, every restart wipes everything.
 
+> **SSO token expiry (`PERSISTENCE=dynamodb`).** The token lasts ~1 h. When it
+> lapses you'll see `recovery.sweep.failed` with
+> `"Token is expired … run 'aws sso login'"` repeating every
+> `RECOVERY_INTERVAL_MS` (and your API calls returning `500`). It is **not** a
+> crash — the sweep failure is caught. Run `aws sso login --profile webhook-challenge`
+> in any terminal; the running server picks up the refreshed credentials on its
+> next sweep, no restart needed.
+
 ### 2.2 Terminal 1 (Git Bash) — the webhook inbox (the "subscriber")
 
 ```bash
