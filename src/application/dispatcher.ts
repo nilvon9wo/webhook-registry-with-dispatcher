@@ -16,6 +16,12 @@
  * or a retryable one that has exhausted `maxAttempts`, is recorded as `failed`.
  * The delivery is persisted as `pending` with a `nextAttemptAt` between attempts,
  * so a crash during the backoff window is picked up by recovery rather than lost.
+ *
+ * NOTE (review, `docs/12`): this class carries three related concerns —
+ * fan-out, one attempt, and retry/resume — that share `inFlight` /
+ * `scheduledRetries` state. It is large but cohesive; splitting the class was
+ * judged to add coupling for little gain. If it grows further, extract the
+ * retry-scheduling collaborator rather than the pure helpers at the bottom.
  */
 
 import {
@@ -117,10 +123,17 @@ export class Dispatcher implements EventDispatcher {
    * recovery can re-drive an event and tests can await completion.
    *
    * The delivery records for every matching subscription are created and
-   * persisted (`pending`) *before* any HTTP call. A crash after this point
-   * leaves recoverable `pending` rows for every subscriber; a crash during it
-   * leaves a recoverable subset. (A fully crash-proof fan-out would write the
-   * event and its delivery stubs in one transaction — see `docs/12`.)
+   * persisted (`pending`) *before* any HTTP call, so a crash after this point
+   * leaves recoverable `pending` rows for every subscriber.
+   *
+   * KNOWN LIMITATION (review S1, `docs/12`): a crash *during* the materialise
+   * pass — or before it, in `findSubscriptionsForEvent` — leaves only a subset
+   * (or none) of the delivery rows. Recovery keys on existing delivery rows, so
+   * the missing subscribers are dropped. The window is milliseconds. A fully
+   * crash-proof fan-out needs the event + its delivery stubs written in one
+   * transaction (DynamoDB `TransactWriteItems`) or an outbox. This residual
+   * window is not unit-tested (it needs process-kill timing); the fault-injected
+   * `dispatch.partial_failure` path is.
    */
   async dispatchEvent(event: WebhookEvent): Promise<void> {
     const subscriptions = await findSubscriptionsForEvent(this.deps.subscriptions, event);

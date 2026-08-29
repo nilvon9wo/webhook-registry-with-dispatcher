@@ -31,5 +31,9 @@ export async function findSubscriptionsForEvent(
   repository: SubscriptionRepository,
   event: WebhookEvent,
 ): Promise<Subscription[]> {
+  // NOTE (review S4, `docs/12`): on DynamoDB this is a GSI query, which is
+  // always eventually consistent. A subscription created milliseconds before a
+  // matching event is published can be missed here — a genuine (small)
+  // missed-delivery window, not just a duplicate. Documented, not fixed.
   return repository.list({ eventType: event.type });
 }

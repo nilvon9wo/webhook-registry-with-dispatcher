@@ -17,6 +17,7 @@ export function registerSubscriptionRoutes(router: Router, service: Subscription
   });
 
   router.add('GET', '/subscriptions', async (context) => {
+    // LIMITATION (review S8, `docs/12`): unbounded — no `?limit=` / cursor.
     const eventType = context.query.get('eventType') ?? undefined;
     const items = await service.list({ eventType });
     return { status: 200, body: { items } };

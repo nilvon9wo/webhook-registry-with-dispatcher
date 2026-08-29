@@ -17,6 +17,9 @@ import { requiredParam, type Router } from '../router.js';
 
 export function registerDeliveryRoutes(router: Router, service: DeliveryService): void {
   router.add('GET', '/deliveries', async (context) => {
+    // LIMITATION (review S8, `docs/12`): returns every matching delivery, no
+    // `?limit=` / cursor. A hot `eventId` would load the whole set into one
+    // response. Acceptable at the challenge's scale; production needs pagination.
     const items = await service.list(parseFilter(context.query));
     return { status: 200, body: { items } };
   });

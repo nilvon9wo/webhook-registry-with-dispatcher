@@ -1,198 +1,208 @@
-# Architecture Review
+# Architecture Review & Resolution Log
 
-Senior-engineer review of the implementation against `docs/1` (spec), `docs/3`
-(steering), `docs/4` (architecture), `docs/5` (testing).
+This document is a point-in-time **review** and the log of what was done about
+it. It is not a description of the current design — for that, see
+`docs/4 - architecture.md` and `docs/9 - decisions.md`. Anything still open is in
+the [Remaining issues](#remaining-issues) table at the bottom and is also
+commented at the relevant place in the code.
 
-## Resolution (prompt 20)
-
-| # | Resolution |
+| | |
 | --- | --- |
-| S1 | `dispatchEvent` now materialises + persists a `pending` delivery record for every matching subscription **before** any HTTP call (`Promise.allSettled` over `materializeDelivery`, then a second `allSettled` over the attempts). A crash after this leaves recoverable rows for every subscriber; a crash during it leaves a recoverable subset. The fully crash-proof transactional fan-out is still noted as the production path. New test: "persists a delivery record for every subscription before making any HTTP call". |
-| S2 | Fixed — port interfaces moved to `application/` (`logging.ts`, `webhook-client.ts`, `target-url-guard.ts`), `log-fields.ts` moved up; `grep` confirms no non-test file under `src/application`/`src/domain` imports `src/infrastructure`. |
-| S3 | `Application.drain(timeoutMs?)` added: stops recovery, `cancelScheduledRetries()`, then `Promise.race([whenIdle(), timeout])`. `index.ts` shutdown calls it after `httpServer.close()`. `Application.dispatcher` (concrete) is now exposed. New test: `shutdown.test.ts`. |
-| S4 | `get()` in all three DynamoDB repos uses `ConsistentRead: true`. The GSI-match eventual-consistency window is documented in the repo header + here. |
-| S5 | `uncaughtException` now logs then runs `shutdown('uncaughtException', 1)`. |
-| S6 | Unused `HttpError` removed from `problem.ts`. |
-| S7 | The SSRF re-check runs **before** `beginAttempt`; a blocked target is `abandonDelivery` (`pending → failed`) and spends no attempt. |
-| S8 | Not changed — remains documented as out of scope (LOW). Production fix is `?limit=` + a continuation token on the list endpoints. |
-| S9 | Recovery re-drives (`resumeDueDeliveries`) and reclaims (`reclaimStuckDeliveries`) via `Promise.allSettled`, matching the dispatcher. |
-| S10 | Attempt duration measured with `performance.now()`. |
-| S11 | Backoff switched to **equal jitter** (`half + random()*half`) — a struggling subscriber never gets a near-zero-delay retry. `random() === 1` still yields the full window, so the dispatcher tests are unaffected. |
-| S12 | `deliverToSubscription`/`materializeDelivery` use `this.log.child(...)` instead of re-adding `component`. |
+| Reviewed against | `docs/1` (spec), `docs/3` (steering), `docs/4` (architecture), `docs/5` (testing) |
+| Diagnosed | 2026-08-29 ~09:55 UTC+2 (commit `d337c2c`) |
+| Resolved | 2026-08-29 10:03–10:11 UTC+2 (commits `1260f0b`, `cc5e521`) — same session |
+| Status | 10 of 12 findings resolved; S8 and two soft items deferred (see the table) |
 
-`test:all` after the changes: **307 pass** (324 with DynamoDB).
+## Summary (as reviewed)
+
+Core flow correct, cleanly layered, disciplined about scope. One high-severity
+durability gap and a cluster of medium issues (layering direction, shutdown
+draining, DynamoDB read consistency, uncaught-exception handling), plus low/nits.
+
+## Findings
+
+Severity is as assessed at diagnosis. Each finding keeps its original text; the
+**Resolution** line records what changed (or why not).
 
 ---
 
-Original review below. No code was changed for the review itself; findings were
-addressed in the step above.
+### S1 — HIGH · crash during `dispatchEvent`, before delivery records are persisted, drops subscribers unrecoverably
 
-## Summary
-
-The implementation is correct on the core flow, cleanly layered, and disciplined
-about scope (no queue, no ORM, no DI framework, no speculative infrastructure).
-Persistence, asynchronous dispatch, failure isolation, bounded retry, and
-recovery all work and are well tested (321 tests, correct pyramid).
-
-One **high-severity** durability gap, a handful of **medium** issues (layering
-direction, shutdown draining, DynamoDB read consistency, uncaught-exception
-handling), and several low/nit items.
-
-## Findings (by severity)
-
-### S1 — HIGH · a crash during `dispatchEvent`, before the delivery records are persisted, drops subscribers unrecoverably
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (partial — residual window remains, documented)
 
 `EventService.ingest` persists the event and returns `202`, then
-`Dispatcher.dispatch` runs `dispatchEvent` in the background:
+`Dispatcher.dispatch` runs `dispatchEvent` in the background. If the process
+died between the `202` and the point where every matching subscription had a
+persisted `pending` delivery, the affected subscriptions got no delivery record.
+Recovery only looks at existing delivery records, so those subscribers were
+lost — even though the event is durable. This is the "process crashes during
+dispatch" scenario the spec calls out (§8).
 
-```
-findSubscriptionsForEvent            ← DNS/DB round-trip
-Promise.allSettled(subs.map(deliverToSubscription))
-  deliverToSubscription: createDelivery → deliveries.save(pending) → attemptDelivery
-```
+**Resolution:** `dispatchEvent` now creates and persists a `pending` delivery
+record for **every** matching subscription (`Promise.allSettled` over
+`materializeDelivery`) *before* it makes any HTTP call (a second `allSettled`
+over the attempts). A crash after the materialise pass leaves recoverable rows
+for every subscriber. New unit test: "persists a delivery record for every
+subscription before making any HTTP call". Fault injection covers the
+`dispatch.partial_failure` branch.
 
-If the process dies **between the `202` and the point where every matching
-subscription has a persisted `pending` delivery**, the affected subscriptions
-get no delivery record. Recovery only ever looks at existing delivery records
-(`listPendingDue`, `listStuckDelivering`), so those subscribers are lost — even
-though the event is durable.
+**Residual (open):** a crash *during* the materialise pass, or in
+`findSubscriptionsForEvent` before it, still drops the not-yet-written
+subscribers. Window is milliseconds. The fully crash-proof fix is a
+transactional event + delivery-stub write (DynamoDB `TransactWriteItems`, ≤100
+items) or an outbox. Commented at `dispatcher.ts:dispatchEvent`. See the
+[Remaining issues](#remaining-issues) table.
 
-This is exactly the "process crashes during dispatch" scenario the spec calls
-out (§8: *"the event should not disappear merely because the process crashes
-during dispatch"*). The event survives; the work does not.
-
-The window is small (matching + N concurrent stub writes, tens of ms) but real.
-
-**Options:**
-1. *Eager materialisation in `dispatchEvent`* — create and `save` **all** delivery
-   stubs in one pass, then attempt them. A crash after the stub pass leaves N
-   recoverable `pending` deliveries; a crash during it leaves a recoverable
-   prefix. Small change, closes most of the window.
-2. *Materialise at ingest* — `EventService.ingest` matches + writes the delivery
-   stubs synchronously (still not waiting on any webhook), so a crash any time
-   after `202` is fully recoverable. Couples `EventService` to matching + the
-   delivery repo, and a partial stub-write failure would surface as a `5xx` to
-   the publisher (who then retries with a new event id → duplicate deliveries
-   for the subscriptions whose stubs succeeded — the dual-write problem).
-3. *Outbox / transactional write* — fully correct, clearly beyond the timebox.
-
-**Recommendation:** option 1 for the timebox, and document the residual window
-plus option 3 as the production path. Add a test asserting `dispatchEvent`
-persists every delivery record before it makes any HTTP call.
+---
 
 ### S2 — MEDIUM · the application layer imports concrete infrastructure
 
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `1260f0b`)
+
 `src/application/{dispatcher,event-service,recovery,subscription-service}.ts`
-import from `src/infrastructure/{logger,webhook-client,ssrf-guard,log-fields}.ts`.
+imported from `src/infrastructure/{logger,webhook-client,ssrf-guard,log-fields}`.
+The interfaces are legitimate abstractions but lived in the infrastructure
+layer, so the import direction was backwards and inconsistent with `Clock`,
+`Scheduler`, and the repository ports.
 
-The *interfaces* being imported (`Logger`, `WebhookClient`, `TargetUrlGuard`) are
-legitimate abstractions, but they physically live in the infrastructure layer,
-so the import direction is backwards — and inconsistent with `Clock`,
-`Scheduler`, and the repository ports, which correctly live in `application/`.
-`SsrfBlockedError`, `errorFields`, `LOG_COMPONENTS`, and the `log-fields`
-builders are concrete and also imported upward.
+**Resolution:** the port interfaces + shared helpers moved into `application/`
+(`logging.ts`, `webhook-client.ts`, `target-url-guard.ts`; `log-fields.ts` moved
+up). The concrete factories (`createLogger`, `createHttpWebhookClient`,
+`createDnsTargetUrlGuard`) stay in `infrastructure/`. `grep` confirms no non-test
+file under `src/application` or `src/domain` imports `src/infrastructure`.
+Behaviour unchanged.
 
-Steering (`docs/3`): *"Keep infrastructure code separate from domain/application
-behavior"* / *"depend on abstractions"*.
-
-**Fix:** move the port interfaces + shared error/field helpers into
-`application/` (e.g. `application/ports/`), leaving the concrete factories
-(`createLogger`, `createHttpWebhookClient`, `createDnsTargetUrlGuard`) in
-`infrastructure/`. Mechanical; no behaviour change.
+---
 
 ### S3 — MEDIUM · graceful shutdown does not drain the dispatcher
 
-`index.ts` shutdown calls `recovery.stop()` + `httpServer.close()` but never
-`dispatcher.cancelScheduledRetries()` or `await dispatcher.whenIdle()` — and
-`Application.eventDispatcher` is typed as the bare `EventDispatcher`, so those
-methods are not even reachable. On `SIGTERM`, in-flight deliveries and scheduled
-retries are hard-killed.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
 
-Data is safe (a `delivering` record is persisted before the HTTP call and
-reclaimed by recovery; a scheduled retry is persisted `pending`), but it is not
-a graceful drain, and `docs/9` explicitly deferred this to this step.
+`index.ts` shutdown called `recovery.stop()` + `httpServer.close()` but never
+`cancelScheduledRetries()` / `whenIdle()`, and `Application.eventDispatcher` was
+the bare `EventDispatcher` so those were unreachable. In-flight deliveries and
+scheduled retries were hard-killed on `SIGTERM` (data-safe via recovery, but not
+graceful).
 
-**Fix:** expose the concrete dispatcher (or a `LifecycleDispatcher` interface) on
-`Application`; on shutdown `cancelScheduledRetries()` then
-`await Promise.race([dispatcher.whenIdle(), timeout])` before closing.
+**Resolution:** `Application.drain(timeoutMs?)` — stops recovery,
+`cancelScheduledRetries()`, then `Promise.race([whenIdle(), timeout])`.
+`index.ts` calls it after `httpServer.close()`. `Application.dispatcher`
+(concrete) is exposed. New `tests/integration/shutdown.test.ts`;
+`test-app.close()` drains too so tests cannot leak background work.
+
+---
 
 ### S4 — MEDIUM · DynamoDB reads are eventually consistent where correctness wants strong consistency
 
-- `DynamoDeliveryRepository.get` uses a default (eventually consistent)
-  `GetItem`. Recovery's `resumeDelivery` reads the delivery with `get`, so it can
-  act on a stale `pending` view of a delivery that has actually been delivered →
-  an extra (duplicate) POST. Covered by the documented at-least-once contract,
-  but a `ConsistentRead: true` on `get` removes this particular cause cheaply.
-- `findSubscriptionsForEvent` queries the `eventType-index` GSI, which is always
-  eventually consistent. A subscription created moments before a matching event
-  is published can be missed — a genuine missed-delivery window, not just a
-  duplicate.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 for `get`; GSI window documented
 
-**Fix:** `ConsistentRead: true` on all single-item `get`s; document the GSI-match
-window as an inherent DynamoDB property (webhook registration is rarely followed
-within milliseconds by a matching event; a client that needs the guarantee
-should poll `GET /subscriptions/{id}` before publishing).
+`DynamoDeliveryRepository.get` used a default (eventually consistent) `GetItem`,
+so recovery's `resumeDelivery` could act on a stale `pending` view of a
+delivered delivery (an extra POST). `findSubscriptionsForEvent` queries a GSI,
+which is always eventually consistent — a subscription created moments before a
+matching event can be missed.
+
+**Resolution:** `get()` in all three DynamoDB repos now uses
+`ConsistentRead: true`. The GSI-match window cannot be removed (GSIs have no
+strong-consistency option) and is documented in the repo header and at
+`matching.ts:findSubscriptionsForEvent`.
+
+---
 
 ### S5 — MEDIUM · `uncaughtException` handler logs and continues
 
-`index.ts` logs `process.uncaught_exception` and returns. After an uncaught
-exception the process is in an undefined state; Node guidance is to log and then
-exit (or trigger shutdown). Continuing risks serving corrupt state.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
 
-**Fix:** after logging, run `shutdown('uncaughtException')` / `process.exit(1)`.
+After an uncaught exception the process state is undefined; continuing risks
+serving corrupt state.
+
+**Resolution:** the handler logs `process.uncaught_exception` then runs
+`shutdown('uncaughtException', 1)`.
+
+---
 
 ### S6 — LOW · unused `HttpError` class
 
-`src/http/problem.ts` defines and handles `HttpError`, but nothing ever throws
-it (`requiredParam` throws a plain `Error`; handlers throw domain errors).
-Dead code — remove it, or actually use it for the "route param missing" case.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
+
+`src/http/problem.ts` defined and handled `HttpError` but nothing threw it.
+
+**Resolution:** removed. `toErrorResponse` maps `ValidationError`→400,
+`ResourceNotFoundError`→404, everything else→generic 500.
+
+---
 
 ### S7 — LOW · SSRF guard runs after `beginAttempt`
 
-`attemptDelivery` does `beginAttempt` (→ `delivering`, `attempts++`) and `save`
-*before* the SSRF re-check. A blocked target therefore consumes an attempt and
-briefly shows `delivering`. Move the guard check above `beginAttempt` so a
-blocked delivery fails without spending an attempt.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
+
+A blocked target consumed an attempt and briefly showed `delivering`.
+
+**Resolution:** the guard check runs before `beginAttempt`; a blocked target is
+`abandonDelivery` (`pending → failed`) and spends no attempt.
+
+---
 
 ### S8 — LOW · list endpoints are unbounded
 
-`GET /deliveries` and `GET /subscriptions` have no `Limit` / pagination. A hot
-`eventId` (many deliveries) loads the whole set into memory and into one JSON
-response. Documented as out-of-scope in `docs/9`, but note it as a real
-production risk; a `?limit=` + continuation token is the standard fix.
+- **Diagnosed:** 2026-08-29 · **Status:** OPEN — deferred (see the table)
+
+`GET /deliveries` and `GET /subscriptions` have no `?limit=` / cursor; a hot
+`eventId` loads the whole set into memory and one JSON response.
+
+**Resolution:** none. Commented at `ports.ts`, both handlers, and
+`dynamodb-repositories.ts:collectPages`. See the table for effort/risk.
+
+---
 
 ### S9 — LOW · recovery re-drives deliveries sequentially
 
-`RecoveryService.resumeDueDeliveries` is a `for … of` with `await`, while normal
-dispatch fans out with `Promise.allSettled`. A sweep that picks up a batch of
-deliveries each hitting the webhook timeout can exceed its own interval (the next
-ticks are correctly skipped by the reentrancy guard, but the sweep falls
-behind). Bounded parallelism here would match the dispatcher and the intent.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
+
+`RecoveryService` used `for … of` with `await` while normal dispatch fans out.
+
+**Resolution:** `reclaimStuckDeliveries` and `resumeDueDeliveries` use
+`Promise.allSettled`, matching the dispatcher. Batch is capped by `batchLimit`.
+
+---
 
 ### S10 — LOW · `durationMs` uses `Date.now()`
 
-Attempt duration is measured with `Date.now()` rather than `performance.now()`
-(monotonic) and independently of the injected `Clock`. Harmless for logs; a
-fixed-clock test would still show real elapsed time.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
+
+**Resolution:** attempt duration measured with `performance.now()` (monotonic),
+rounded to ms.
+
+---
 
 ### S11 — LOW · full-jitter backoff has no floor
 
-`computeBackoffMs` returns `round(random() * capped)` — a retry can fire almost
-immediately. This is AWS "full jitter" and is documented, but "equal jitter"
-(`capped/2 + random()*capped/2`) would guarantee a minimum spacing for a
-struggling subscriber.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
+
+`computeBackoffMs` returned `round(random() * capped)` — a retry could fire
+almost immediately.
+
+**Resolution:** switched to **equal jitter** (`half + random()*half`). A
+struggling subscriber never gets a near-zero-delay retry; `random() === 1` still
+yields the full window so the dispatcher tests are unaffected.
+
+---
 
 ### S12 — NIT · minor logger duplication
 
-`deliverToSubscription` rebuilds a child logger with `component` by hand instead
-of using `this.log`.
+- **Diagnosed:** 2026-08-29 · **Status:** RESOLVED 2026-08-29 (commit `cc5e521`)
 
-## What is satisfied (spot-checked)
+**Resolution:** `materializeDelivery` uses `this.log.child(...)` instead of
+re-adding `component`.
+
+---
+
+## What is satisfied (spot-checked at diagnosis)
 
 | Requirement | Status |
 | --- | --- |
 | CRUD `/subscriptions`, conventional status codes | ✅ |
-| `POST /events` → validate → persist → 202 → async dispatch | ✅ (event durable; see S1 for the delivery-record gap) |
+| `POST /events` → validate → persist → 202 → async dispatch | ✅ (event durable; S1 residual for the delivery-record gap) |
 | Persistence external, behind repository ports | ✅ (in-memory + DynamoDB, contract-tested) |
 | Matching by exact event type | ✅ |
 | One delivery record per matching subscription | ✅ |
@@ -200,25 +210,21 @@ of using `this.log`.
 | Failure isolation between subscribers | ✅ (`Promise.allSettled`, tested) |
 | Bounded retry, exponential backoff, retry classification | ✅ |
 | Retry does not create a new event id; event stable across attempts | ✅ (tested) |
-| Recovery for stuck `delivering` + due `pending`, not cron-primary | ✅ (see S1 for the uncovered case) |
+| Recovery for stuck `delivering` + due `pending`, not cron-primary | ✅ (S1 residual for the uncovered case) |
 | `/deliveries` bonus with filters | ✅ |
 | CloudFormation for the real resources | ✅ (`cfn-lint` + `validate-template` clean) |
 | Env-driven config, safe defaults, no secrets | ✅ |
 | HTTPS-only URLs, SSRF consideration | ✅ (guard implemented; DNS-rebinding documented) |
 | At-least-once semantics, not exactly-once | ✅ (documented) |
-| Test pyramid | ✅ (~230 unit / ~45 integration / 8 E2E) |
+| Test pyramid | ✅ (~235 unit / ~48 integration / 8 E2E) |
 
-## Unnecessary complexity
+## Remaining issues
 
-None material. `Clock` / `Scheduler` / `IdGenerator` seams, the repository
-ports, `configSummary`/`configWarnings`, and `log-fields` are all justified.
-`dispatcher.ts` (~340 lines) and `dispatcher.test.ts` (~520 lines) are getting
-large and could be split by concern (attempt vs retry vs resume), but that is
-optional.
+Everything still open, with the full recommendation.
 
-## Test quality
-
-Strong: contract tests for the repositories, AAA throughout, fakes over mocks,
-behaviour-focused, `waitFor` instead of fixed sleeps. Gaps: nothing exercises
-the S1 window or `dispatch.partial_failure` (both hard to test without a crash
-harness).
+| Ref | Description | Affects | Recommendation | Effort | Risk | Deferred because |
+| --- | --- | --- | --- | --- | --- | --- |
+| **S8** | `GET /deliveries` & `GET /subscriptions` return the whole result set — no `?limit=`, no cursor. A hot `eventId`/`status` loads a whole partition into memory and one response body. | **Production** | (a) internal hard cap `MAX_LIST_RESULTS` (~1000) + `warn` on truncation; (b) add validated `?limit=` (1–500, default 100); (c) full continuation cursor — needs a repo-agnostic opaque token (in-memory offset vs DynamoDB `LastEvaluatedKey`), base64 encode/decode, `nextCursor` in the body. | (a) ~30 min · (b) +~30 min · (c) ~2–3 hrs | (a)/(b) low · (c) medium (new abstraction, breaking response shape) | At the challenge's data scale nothing lists more than tens of rows; a partial pagination API is worse than none. Commented in code. |
+| **S1-residual** | A crash *during* the delivery-stub materialise pass (or in `findSubscriptionsForEvent` before it) still drops the not-yet-written subscribers — recovery keys on existing delivery rows. Window is milliseconds. | **Production** | Write the event + all delivery stubs in one transaction (DynamoDB `TransactWriteItems`, ≤100 items) at ingest, or an outbox table drained by a worker. | ~2–4 hrs (transaction) / ~1 day (outbox) | medium — changes the ingest path and the in-memory repo would need a matching primitive | Disproportionate for the timebox; the common case (crash after materialise) is already covered. Commented at `dispatcher.ts:dispatchEvent`. |
+| **Test gap** | Nothing exercises the S1 residual window or a real process kill. | **Test only** | *Not* a subprocess crash harness (~2–3 hrs, inherently flaky — the sub-millisecond window can't be hit deterministically). Instead, fault injection: a fake `DeliveryRepository` whose `save` fails/hangs on the Nth call. Covers `dispatch.partial_failure` and "materialised-then-recovered". | ~30 min | low | The high-value fault-injection subset is cheap and could be added later; the subprocess harness is not worth it. |
+| **File size** | `dispatcher.ts` (~360 lines) and `dispatcher.test.ts` (~560 lines) are large. | **Neither** (maintainability only) | Split `dispatcher.test.ts` into `dispatcher-delivery.test.ts` + `dispatcher-retry.test.ts` (~15 min, zero risk). Leave `dispatcher.ts` — the class is cohesive (fan-out + attempt + retry share `inFlight`/`scheduledRetries` state); splitting the class adds coupling. If it grows, extract a retry-scheduling collaborator. | test split ~15 min | none | Soft finding; not material. Noted in the `dispatcher.ts` header. |

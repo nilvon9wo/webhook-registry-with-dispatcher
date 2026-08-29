@@ -29,7 +29,13 @@ export interface SubscriptionRepository {
   /** Insert or replace a subscription by its id. */
   save(subscription: Subscription): Promise<void>;
   get(id: string): Promise<Subscription | undefined>;
-  /** All subscriptions, optionally narrowed to one event type. Insertion order. */
+  /**
+   * All subscriptions, optionally narrowed to one event type. Insertion order.
+   *
+   * LIMITATION (review S8, `docs/12`): no limit or pagination — the whole result
+   * set is loaded and returned. Fine at the challenge's scale; a production
+   * deployment needs `limit` + a continuation cursor here and on `DeliveryRepository.list`.
+   */
   list(filter?: SubscriptionListFilter): Promise<Subscription[]>;
   /** Removes the subscription. Resolves `true` if it existed, `false` otherwise. */
   delete(id: string): Promise<boolean>;
@@ -50,7 +56,10 @@ export interface DeliveryRepository {
   /** Insert or replace a delivery by its id (used for every state transition). */
   save(delivery: Delivery): Promise<void>;
   get(id: string): Promise<Delivery | undefined>;
-  /** Deliveries matching every provided filter field. Insertion order. */
+  /**
+   * Deliveries matching every provided filter field. Insertion order.
+   * Unbounded — see the limitation note on `SubscriptionRepository.list`.
+   */
   list(filter?: DeliveryListFilter): Promise<Delivery[]>;
   /**
    * Recovery query: `pending` deliveries whose `nextAttemptAt` is at or before

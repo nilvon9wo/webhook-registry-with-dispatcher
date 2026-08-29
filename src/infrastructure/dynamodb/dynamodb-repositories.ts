@@ -211,7 +211,14 @@ interface Page {
   readonly LastEvaluatedKey?: Record<string, unknown>;
 }
 
-/** Follows `LastEvaluatedKey` pagination and concatenates every page's items. */
+/**
+ * Follows `LastEvaluatedKey` pagination and concatenates every page's items.
+ *
+ * LIMITATION (review S8, `docs/12`): reads *all* pages into memory. The
+ * repository ports have no `limit`, so a `list()` for a hot `eventId` /
+ * `status` would load the whole partition. Production needs a bounded read plus
+ * a cursor surfaced through the port.
+ */
 async function collectPages<T>(
   fetchPage: (exclusiveStartKey: Record<string, unknown> | undefined) => Promise<Page>,
 ): Promise<T[]> {
