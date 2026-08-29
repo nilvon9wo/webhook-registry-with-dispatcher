@@ -436,9 +436,10 @@ If the implementation benefits from DynamoDB Local, Docker Desktop can be instal
 
 # 15. Docker
 
-> **Outcome (as built):** not used at all — no `Dockerfile`, no compose file,
-> nothing run or tested under Docker. This section is the pre-implementation
-> deliberation; the decision was that Docker was never necessary.
+> **Outcome (as built):** Docker was *not* needed for development — the app runs
+> directly on Node.js. A final pass added a verified multi-stage `Dockerfile` as
+> a deployment/production-readiness bonus (see `docs/9` and the README). No
+> compose file; no DynamoDB Local or LocalStack.
 
 Docker is **optional**.
 
@@ -896,11 +897,12 @@ Perform setup in this order:
 
 ## Optional
 
-> None of the following were used in the final implementation. It runs on
-> Node.js with the AWS SDK; DynamoDB verification was against real AWS.
+> Of the following, only a container image was ultimately produced (a verified
+> `Dockerfile`, see `docs/9`). The rest were not used — the app runs on Node.js
+> with the AWS SDK, and DynamoDB was verified against real AWS.
 
 ```text
-○ Docker
+○ Docker  →  a Dockerfile was added (verified); no compose file
 ○ DynamoDB Local
 ○ LocalStack
 ○ Postman

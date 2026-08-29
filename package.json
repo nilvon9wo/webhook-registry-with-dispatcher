@@ -13,6 +13,8 @@
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "inbox": "tsx scripts/webhook-inbox.ts",
     "export:conversation": "tsx scripts/export-conversation.ts",
+    "docker:build": "docker build -t webhook-registry .",
+    "docker:run": "docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "lint": "oxlint",
     "format": "prettier --write .",

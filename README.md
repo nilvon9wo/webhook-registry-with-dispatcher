@@ -85,9 +85,6 @@ live Swagger UI at `/docs` when the server is running.
   DynamoDB-compatible endpoint set via `DYNAMODB_ENDPOINT`. Not required to
   build, run, or `npm test`.
 
-> This project has no Docker involvement — no `Dockerfile`, no compose file,
-> nothing tested or run under Docker. It runs directly on Node.js.
-
 ## Install
 
 ```bash
@@ -104,6 +101,20 @@ npm run build && npm start     # compiled
 The server listens on `PORT` (default `3000`). `GET /health` → `{"status":"ok"}`.
 On startup it logs a non-secret configuration summary and a warning line for each
 risky setting (in-memory persistence, SSRF guard off, recovery disabled, etc.).
+
+### Docker
+
+A multi-stage [`Dockerfile`](Dockerfile) is included and verified (build → run →
+health / publish / graceful `SIGTERM` shutdown). Runs as a non-root user, ~350 MB.
+
+```bash
+docker build -t webhook-registry .
+docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry
+```
+
+For DynamoDB, pass `-e PERSISTENCE=dynamodb -e AWS_REGION=…` and supply
+credentials the SDK can find (mount `~/.aws` read-only, or `-e AWS_*`). Docker is
+**optional** — the service runs fine directly on Node.js.
 
 Graceful shutdown on `SIGINT` / `SIGTERM`: stop accepting connections, cancel
 pending retry timers, wait (bounded) for in-flight deliveries, exit.

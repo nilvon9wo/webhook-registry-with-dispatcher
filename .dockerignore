@@ -1,0 +1,19 @@
+# Only what `npm ci` + `npm run build` + the runtime need is copied explicitly
+# in the Dockerfile; this list keeps the build context small and avoids leaking
+# local files into a layer.
+.git
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.example
+*.zip
+.idea
+.vscode
+tests
+docs
+scripts
+requests.http
+infrastructure
+*.md

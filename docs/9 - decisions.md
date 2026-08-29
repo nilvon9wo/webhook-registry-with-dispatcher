@@ -306,6 +306,17 @@ It is a living document, updated as implementation proceeds.
     critical-failure scenario from the challenge, retry + crash-recovery
     scenarios, a pass/fail results log). The automated suite already covers all
     of it; this is for hands-on confidence and demos.
+  - **Dockerfile (added post-review).** Docker was deliberated pre-implementation
+    (`docs/8` §15) and left out as unnecessary. A final pass added a multi-stage
+    `Dockerfile` + `.dockerignore` as a production-readiness bonus, since the
+    service containerises cleanly (pure-JS deps, env-var config). Build stage
+    (`node:24-slim`, `npm ci`, `tsc`) → runtime stage (`npm ci --omit=dev`,
+    `dist/` + `openapi.yaml`, **non-root `node` user**, `HEALTHCHECK` hitting
+    `/health`). `CMD ["node", "dist/index.js"]` — `node` is PID 1 so `SIGTERM`
+    from `docker stop` reaches the graceful-shutdown handler directly.
+    **Verified:** `docker build` → `docker run` → health / create / publish /
+    `docker stop` → `server.stopping reason=SIGTERM`, exit 0. Image ~350 MB.
+    Docker remains optional; the service also runs directly on Node.
   - **Docs folder stays flat and keeps its numbering.** Considered subdividing
     `docs/` by concern and renumbering into a more optimal reading order. Not
     done: the numbers are referenced from ~30 cross-links across the README and
