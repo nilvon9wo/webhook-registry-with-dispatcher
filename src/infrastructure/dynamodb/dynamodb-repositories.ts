@@ -17,6 +17,12 @@
  * hide exactly the "stuck in delivering" records that recovery must find.
  * `createdAt` is always present, so every delivery is indexed; the cheap
  * timing comparison is done after the query instead.
+ *
+ * Consistency: `get` uses `ConsistentRead: true` (single-item reads, correctness
+ * over the ~2x read cost — recovery re-checks a delivery's status this way).
+ * GSI queries (`list*`) are always eventually consistent by DynamoDB design, so
+ * `findSubscriptionsForEvent` can briefly miss a subscription created moments
+ * before a matching event — documented in `docs/12`.
  */
 
 import {
@@ -55,7 +61,7 @@ export class DynamoSubscriptionRepository implements SubscriptionRepository {
 
   async get(id: string): Promise<Subscription | undefined> {
     const result = await this.deps.client.send(
-      new GetCommand({ TableName: this.deps.tableName, Key: { id } }),
+      new GetCommand({ TableName: this.deps.tableName, Key: { id }, ConsistentRead: true }),
     );
     return result.Item as Subscription | undefined;
   }
@@ -102,7 +108,7 @@ export class DynamoEventRepository implements EventRepository {
 
   async get(id: string): Promise<WebhookEvent | undefined> {
     const result = await this.deps.client.send(
-      new GetCommand({ TableName: this.deps.tableName, Key: { id } }),
+      new GetCommand({ TableName: this.deps.tableName, Key: { id }, ConsistentRead: true }),
     );
     return result.Item as WebhookEvent | undefined;
   }
@@ -117,7 +123,7 @@ export class DynamoDeliveryRepository implements DeliveryRepository {
 
   async get(id: string): Promise<Delivery | undefined> {
     const result = await this.deps.client.send(
-      new GetCommand({ TableName: this.deps.tableName, Key: { id } }),
+      new GetCommand({ TableName: this.deps.tableName, Key: { id }, ConsistentRead: true }),
     );
     return result.Item as Delivery | undefined;
   }

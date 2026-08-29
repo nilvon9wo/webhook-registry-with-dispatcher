@@ -109,13 +109,15 @@ export class RecoveryService {
       cutoff,
       this.deps.config.batchLimit,
     );
-    for (const delivery of stuck) {
-      await this.deps.deliveries.save(reclaimStuck(delivery, this.deps.clock.now()));
-      this.log.debug('recovery.delivery.reclaimed', {
-        ...deliveryFields(delivery),
-        lastAttemptAt: delivery.lastAttemptAt,
-      });
-    }
+    await Promise.allSettled(
+      stuck.map(async (delivery) => {
+        await this.deps.deliveries.save(reclaimStuck(delivery, this.deps.clock.now()));
+        this.log.debug('recovery.delivery.reclaimed', {
+          ...deliveryFields(delivery),
+          lastAttemptAt: delivery.lastAttemptAt,
+        });
+      }),
+    );
     return stuck.length;
   }
 
@@ -124,9 +126,7 @@ export class RecoveryService {
       this.deps.clock.now(),
       this.deps.config.batchLimit,
     );
-    for (const delivery of due) {
-      await this.deps.resumer.resumeDelivery(delivery.id);
-    }
+    await Promise.allSettled(due.map((delivery) => this.deps.resumer.resumeDelivery(delivery.id)));
     return due.length;
   }
 }

@@ -187,6 +187,18 @@ It is a living document, updated as implementation proceeds.
   their statements together with a one-line reason. All existing tests were
   brought into line.
 
+- **Architecture review (prompts 19–20):** full review in
+  `docs/12 - architecture-review.md`. Changes made: delivery records for a whole
+  fan-out are persisted before any HTTP call (crash-recovery hole S1); the
+  logging / webhook-client / SSRF-guard **port interfaces moved from
+  `infrastructure/` into `application/`** so the application layer no longer
+  imports infrastructure (S2); `Application.drain()` + graceful shutdown wired
+  into `index.ts` (S3); DynamoDB `get()` uses `ConsistentRead: true` (S4);
+  `uncaughtException` shuts down instead of continuing (S5); SSRF re-check moved
+  before `beginAttempt` (S7); recovery re-drives in parallel (S9); attempt
+  timing via `performance.now()` (S10); backoff changed to **equal jitter** so a
+  retry never fires near-instantly (S11); dead `HttpError` removed (S6).
+
 ## 4. Explicitly out of scope for the four-hour build
 
 SQS / durable queue, multi-instance coordination, full SSRF protection

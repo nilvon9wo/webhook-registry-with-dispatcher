@@ -239,6 +239,28 @@ describe('Dispatcher.dispatchEvent', () => {
     expect(webhookClient.requests).toHaveLength(0);
   });
 
+  it('persists a delivery record for every subscription before making any HTTP call', async () => {
+    // Arrange — three subscribers; capture how many delivery rows exist at the
+    // moment the first webhook call is made.
+    const { dispatcher, subscriptions, deliveries, webhookClient } = newHarness();
+    for (const id of ['sub_a', 'sub_b', 'sub_c']) {
+      await subscriptions.save(aSubscription({ id, eventType: 'order.created' }));
+    }
+    let rowsAtFirstCall = -1;
+    webhookClient.responder = async () => {
+      if (rowsAtFirstCall === -1) {
+        rowsAtFirstCall = (await deliveries.list({ eventId: 'evt_1' })).length;
+      }
+      return { kind: 'success', statusCode: 200 };
+    };
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+
+    // Assert — all three records existed before the first POST went out
+    expect(rowsAtFirstCall).toBe(3);
+  });
+
   it('persists the delivering state before making the HTTP call (so a crash is recoverable)', async () => {
     // Arrange
     const { dispatcher, subscriptions, deliveries, webhookClient } = newHarness();

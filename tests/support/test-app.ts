@@ -65,6 +65,9 @@ export async function startTestApp(options: StartTestAppOptions = {}): Promise<T
       await new Promise<void>((resolve, reject) => {
         application.httpServer.close((error) => (error ? reject(error) : resolve()));
       });
+      // Cancels the recovery interval and any pending retry timers so a test
+      // cannot leak background work into the next one.
+      await application.drain(1000);
     },
   };
 }

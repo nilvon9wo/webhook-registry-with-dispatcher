@@ -46,12 +46,14 @@ export function hasAttemptsRemaining(attemptsMade: number, policy: RetryPolicy):
 }
 
 /**
- * Backoff before the next attempt, using capped exponential backoff with full
- * jitter (`random` is injectable for deterministic tests).
+ * Backoff before the next attempt: capped exponential backoff with **equal
+ * jitter** — half the window is fixed, half is random — so retries are spread
+ * out without a struggling subscriber ever getting a near-zero-delay retry.
+ * `random` is injectable for deterministic tests.
  *
- * `attemptsMade` is the number of attempts already completed — so `1` after the
- * first failure gives a delay in `[0, baseDelayMs]`, `2` gives `[0, 2·base]`,
- * and so on, each capped at `maxDelayMs`.
+ * `attemptsMade` is the number of attempts already completed. With
+ * `random() === 1` the delay is the capped window; with `random() === 0` it is
+ * half of it.
  */
 export function computeBackoffMs(
   attemptsMade: number,
@@ -61,5 +63,6 @@ export function computeBackoffMs(
   const exponent = Math.max(0, attemptsMade - 1);
   const uncapped = policy.baseDelayMs * 2 ** exponent;
   const capped = Math.min(uncapped, policy.maxDelayMs);
-  return Math.round(random() * capped);
+  const half = capped / 2;
+  return Math.round(half + random() * half);
 }

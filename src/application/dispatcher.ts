@@ -115,6 +115,12 @@ export class Dispatcher implements EventDispatcher {
   /**
    * Runs matching + delivery for one event. Public (not only via `dispatch`) so
    * recovery can re-drive an event and tests can await completion.
+   *
+   * The delivery records for every matching subscription are created and
+   * persisted (`pending`) *before* any HTTP call. A crash after this point
+   * leaves recoverable `pending` rows for every subscriber; a crash during it
+   * leaves a recoverable subset. (A fully crash-proof fan-out would write the
+   * event and its delivery stubs in one transaction — see `docs/12`.)
    */
   async dispatchEvent(event: WebhookEvent): Promise<void> {
     const subscriptions = await findSubscriptionsForEvent(this.deps.subscriptions, event);
@@ -124,20 +130,29 @@ export class Dispatcher implements EventDispatcher {
       matchedCount: subscriptions.length,
     });
 
-    const results = await Promise.allSettled(
-      subscriptions.map((subscription) => this.deliverToSubscription(event, subscription)),
+    const materialized = await Promise.allSettled(
+      subscriptions.map((subscription) => this.materializeDelivery(event, subscription)),
     );
+    const deliveries = materialized
+      .filter((result): result is PromiseFulfilledResult<Delivery> => result.status === 'fulfilled')
+      .map((result) => result.value);
 
-    const failedRecordCount = results.filter((result) => result.status === 'rejected').length;
-    if (failedRecordCount > 0) {
-      this.log.error('dispatch.partial_failure', { eventId: event.id, failedRecordCount });
+    const failedToMaterialize = materialized.length - deliveries.length;
+    if (failedToMaterialize > 0) {
+      this.log.error('dispatch.partial_failure', {
+        eventId: event.id,
+        failedToMaterialize,
+        note: 'delivery record could not be persisted; those subscribers were not attempted',
+      });
     }
+
+    await Promise.allSettled(deliveries.map((delivery) => this.attemptDelivery(delivery, event)));
   }
 
-  private async deliverToSubscription(
+  private async materializeDelivery(
     event: WebhookEvent,
     subscription: Subscription,
-  ): Promise<void> {
+  ): Promise<Delivery> {
     const delivery = createDelivery({
       id: this.deps.ids.next('delivery'),
       eventId: event.id,
@@ -146,10 +161,8 @@ export class Dispatcher implements EventDispatcher {
       now: this.deps.clock.now(),
     });
     await this.deps.deliveries.save(delivery);
-    this.deps.logger
-      .child({ component: LOG_COMPONENTS.dispatcher, ...deliveryFields(delivery) })
-      .debug('delivery.created');
-    await this.attemptDelivery(delivery, event);
+    this.log.child(deliveryFields(delivery)).debug('delivery.created');
+    return delivery;
   }
 
   /** A logger scoped to one delivery attempt: correlation ids + target host + attempt number. */
@@ -159,31 +172,27 @@ export class Dispatcher implements EventDispatcher {
 
   /** One delivery attempt: mark delivering, POST, then deliver / retry / fail. */
   private async attemptDelivery(delivery: Delivery, event: WebhookEvent): Promise<void> {
-    const attempting = beginAttempt(delivery, this.deps.clock.now());
-    await this.deps.deliveries.save(attempting);
-
-    const log = this.attemptLogger(attempting);
-
-    // Re-check the target at delivery time: the subscription may have been
-    // registered when the host resolved to a public address and now resolve to a
-    // private one. A blocked target is a permanent failure.
+    // Re-check the target *before* spending an attempt: the subscription may have
+    // been registered when the host resolved to a public address and now resolve
+    // to a private one. A blocked target is a permanent failure.
     try {
-      await this.deps.targetUrlGuard.assertAllowed(attempting.targetUrl);
+      await this.deps.targetUrlGuard.assertAllowed(delivery.targetUrl);
     } catch (error) {
       if (error instanceof SsrfBlockedError) {
-        const failed = completeFailed(attempting, {
-          statusCode: null,
-          error: `target blocked: ${error.reason}`,
-          now: this.deps.clock.now(),
-        });
-        await this.deps.deliveries.save(failed);
-        log.warn('delivery.blocked', { reason: error.reason });
+        await this.deps.deliveries.save(
+          abandonDelivery(delivery, `target blocked: ${error.reason}`, this.deps.clock.now()),
+        );
+        this.log.child(deliveryFields(delivery)).warn('delivery.blocked', { reason: error.reason });
         return;
       }
       throw error;
     }
 
-    const startedAt = Date.now();
+    const attempting = beginAttempt(delivery, this.deps.clock.now());
+    await this.deps.deliveries.save(attempting);
+    const log = this.attemptLogger(attempting);
+
+    const startedAt = performance.now();
     const outcome = await this.deps.webhookClient.send({
       url: attempting.targetUrl,
       payload: toDeliveryPayload(event),
@@ -194,7 +203,7 @@ export class Dispatcher implements EventDispatcher {
       },
       timeoutMs: this.deps.config.webhookTimeoutMs,
     });
-    const durationMs = Date.now() - startedAt;
+    const durationMs = Math.round(performance.now() - startedAt);
     const classification = classifyOutcome(outcome);
 
     if (classification === 'success' && outcome.kind === 'success') {

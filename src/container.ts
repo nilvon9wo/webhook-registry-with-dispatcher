@@ -55,11 +55,15 @@ export interface Application {
   readonly config: AppConfig;
   readonly logger: Logger;
   readonly repositories: Repositories;
-  /** The dispatcher wired into event ingestion, exposed for recovery and tests. */
+  /** The dispatcher wired into event ingestion (may be a test double). */
   readonly eventDispatcher: EventDispatcher;
+  /** The concrete dispatcher — for lifecycle (shutdown drain) and recovery. */
+  readonly dispatcher: Dispatcher;
   /** Periodic recovery sweep (started/stopped by the process entry point). */
   readonly recovery: RecoveryService;
   readonly httpServer: http.Server;
+  /** Stops recovery, cancels pending retries, and waits (bounded) for in-flight deliveries. */
+  drain(timeoutMs?: number): Promise<void>;
 }
 
 export function buildRepositories(config: AppConfig, logger: Logger): Repositories {
@@ -185,5 +189,27 @@ export function buildApplication(
     maxRequestBodyBytes: config.http.maxRequestBodyBytes,
   });
 
-  return { config, logger, repositories, eventDispatcher, recovery, httpServer };
+  const drain = async (timeoutMs = 5000): Promise<void> => {
+    recovery.stop();
+    dispatcher.cancelScheduledRetries();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+    });
+    await Promise.race([dispatcher.whenIdle(), deadline]);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  };
+
+  return {
+    config,
+    logger,
+    repositories,
+    eventDispatcher,
+    dispatcher,
+    recovery,
+    httpServer,
+    drain,
+  };
 }

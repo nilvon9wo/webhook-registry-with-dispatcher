@@ -35,28 +35,40 @@ function main(): void {
     log.warn('config.warning', { detail: warning });
   }
 
-  process.on('unhandledRejection', (reason) => {
-    log.error('process.unhandled_rejection', errorFields(reason));
-  });
-  process.on('uncaughtException', (error) => {
-    log.error('process.uncaught_exception', errorFields(error));
-  });
-
   app.httpServer.listen(config.port, () => {
     log.info('server.listening', { port: config.port, persistence: config.persistence });
   });
   app.recovery.start(config.recovery.intervalMs);
 
-  const shutdown = (signal: string): void => {
-    log.info('server.stopping', { signal });
-    app.recovery.stop();
-    app.httpServer.close(() => process.exit(0));
-    // Failsafe: do not hang forever if connections do not drain.
-    setTimeout(() => process.exit(1), 10_000).unref();
+  let shuttingDown = false;
+  const shutdown = (reason: string, exitCode: number): void => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    log.info('server.stopping', { reason });
+    // Failsafe: never hang the shutdown.
+    const failsafe = setTimeout(() => process.exit(exitCode || 1), 15_000);
+    failsafe.unref();
+
+    app.httpServer.close(() => {
+      void app
+        .drain()
+        .catch((error: unknown) => log.error('shutdown.drain_failed', errorFields(error)))
+        .finally(() => process.exit(exitCode));
+    });
   };
 
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT', 0));
+  process.on('SIGTERM', () => shutdown('SIGTERM', 0));
+  process.on('unhandledRejection', (rejection) => {
+    log.error('process.unhandled_rejection', errorFields(rejection));
+  });
+  process.on('uncaughtException', (error) => {
+    log.error('process.uncaught_exception', errorFields(error));
+    // After an uncaught exception the process state is undefined — shut down.
+    shutdown('uncaughtException', 1);
+  });
 }
 
 main();

@@ -58,15 +58,15 @@ describe('hasAttemptsRemaining', () => {
 
 describe('computeBackoffMs', () => {
   it.each([
-    { attemptsMade: 1, randomValue: 1, expected: 500 },
-    { attemptsMade: 2, randomValue: 1, expected: 1000 },
-    { attemptsMade: 3, randomValue: 1, expected: 2000 },
-    { attemptsMade: 4, randomValue: 1, expected: 4000 },
+    { attemptsMade: 1, expected: 500 },
+    { attemptsMade: 2, expected: 1000 },
+    { attemptsMade: 3, expected: 2000 },
+    { attemptsMade: 4, expected: 4000 },
   ])(
-    'grows exponentially: attempt $attemptsMade with full jitter=1 → $expected ms',
-    ({ attemptsMade, randomValue, expected }) => {
+    'grows exponentially: attempt $attemptsMade with jitter=1 → the full window of $expected ms',
+    ({ attemptsMade, expected }) => {
       // Arrange
-      const random = (): number => randomValue;
+      const random = (): number => 1;
 
       // Act
       const delay = computeBackoffMs(attemptsMade, POLICY, random);
@@ -76,15 +76,26 @@ describe('computeBackoffMs', () => {
     },
   );
 
-  it('applies full jitter within [0, cap]', () => {
-    // Arrange
+  it('equal jitter: half fixed, half random — jitter=0 gives half the window', () => {
+    // Arrange — attempt 3 window is 2000ms.
+    const random = (): number => 0;
+
+    // Act
+    const delay = computeBackoffMs(3, POLICY, random);
+
+    // Assert
+    expect(delay).toBe(1000);
+  });
+
+  it('jitter=0.25 lands a quarter of the way into the random half', () => {
+    // Arrange — attempt 3 window 2000ms: 1000 fixed + 0.25 * 1000.
     const random = (): number => 0.25;
 
     // Act
     const delay = computeBackoffMs(3, POLICY, random);
 
-    // Assert — cap for attempt 3 is 2000ms; 0.25 * 2000 = 500
-    expect(delay).toBe(500);
+    // Assert
+    expect(delay).toBe(1250);
   });
 
   it('never exceeds maxDelayMs however large the exponent', () => {

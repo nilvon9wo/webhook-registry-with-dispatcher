@@ -1,8 +1,31 @@
 # Architecture Review
 
 Senior-engineer review of the implementation against `docs/1` (spec), `docs/3`
-(steering), `docs/4` (architecture), `docs/5` (testing). No code was changed for
-this review; findings are addressed in the next step.
+(steering), `docs/4` (architecture), `docs/5` (testing).
+
+## Resolution (prompt 20)
+
+| # | Resolution |
+| --- | --- |
+| S1 | `dispatchEvent` now materialises + persists a `pending` delivery record for every matching subscription **before** any HTTP call (`Promise.allSettled` over `materializeDelivery`, then a second `allSettled` over the attempts). A crash after this leaves recoverable rows for every subscriber; a crash during it leaves a recoverable subset. The fully crash-proof transactional fan-out is still noted as the production path. New test: "persists a delivery record for every subscription before making any HTTP call". |
+| S2 | Fixed — port interfaces moved to `application/` (`logging.ts`, `webhook-client.ts`, `target-url-guard.ts`), `log-fields.ts` moved up; `grep` confirms no non-test file under `src/application`/`src/domain` imports `src/infrastructure`. |
+| S3 | `Application.drain(timeoutMs?)` added: stops recovery, `cancelScheduledRetries()`, then `Promise.race([whenIdle(), timeout])`. `index.ts` shutdown calls it after `httpServer.close()`. `Application.dispatcher` (concrete) is now exposed. New test: `shutdown.test.ts`. |
+| S4 | `get()` in all three DynamoDB repos uses `ConsistentRead: true`. The GSI-match eventual-consistency window is documented in the repo header + here. |
+| S5 | `uncaughtException` now logs then runs `shutdown('uncaughtException', 1)`. |
+| S6 | Unused `HttpError` removed from `problem.ts`. |
+| S7 | The SSRF re-check runs **before** `beginAttempt`; a blocked target is `abandonDelivery` (`pending → failed`) and spends no attempt. |
+| S8 | Not changed — remains documented as out of scope (LOW). Production fix is `?limit=` + a continuation token on the list endpoints. |
+| S9 | Recovery re-drives (`resumeDueDeliveries`) and reclaims (`reclaimStuckDeliveries`) via `Promise.allSettled`, matching the dispatcher. |
+| S10 | Attempt duration measured with `performance.now()`. |
+| S11 | Backoff switched to **equal jitter** (`half + random()*half`) — a struggling subscriber never gets a near-zero-delay retry. `random() === 1` still yields the full window, so the dispatcher tests are unaffected. |
+| S12 | `deliverToSubscription`/`materializeDelivery` use `this.log.child(...)` instead of re-adding `component`. |
+
+`test:all` after the changes: **307 pass** (324 with DynamoDB).
+
+---
+
+Original review below. No code was changed for the review itself; findings were
+addressed in the step above.
 
 ## Summary
 
