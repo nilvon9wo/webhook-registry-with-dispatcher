@@ -95,7 +95,7 @@ npm run build && npm start     # compiled
 
 The server listens on `PORT` (default `3000`). `GET /health` → `{"status":"ok"}`.
 On startup it logs a non-secret configuration summary and a warning line for each
-risky setting (in-memory persistence in production, SSRF guard off, etc.).
+risky setting (in-memory persistence, SSRF guard off, recovery disabled, etc.).
 
 Graceful shutdown on `SIGINT` / `SIGTERM`: stop accepting connections, cancel
 pending retry timers, wait (bounded) for in-flight deliveries, exit.

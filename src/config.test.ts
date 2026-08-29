@@ -219,9 +219,9 @@ describe('configSummary', () => {
 });
 
 describe('configWarnings', () => {
-  it('is empty for a safe default configuration', () => {
+  it('is empty for a safe non-default configuration (dynamodb, guards on)', () => {
     // Arrange
-    const config = loadConfig({});
+    const config = loadConfig({ PERSISTENCE: 'dynamodb' });
 
     // Act
     const warnings = configWarnings(config);
@@ -233,6 +233,7 @@ describe('configWarnings', () => {
   it('flags insecure target URLs, a disabled SSRF guard, and a disabled recovery sweep', () => {
     // Arrange
     const config = loadConfig({
+      PERSISTENCE: 'dynamodb',
       ALLOW_INSECURE_TARGET_URLS: 'true',
       SSRF_GUARD_ENABLED: 'false',
       RECOVERY_INTERVAL_MS: '0',
@@ -248,7 +249,7 @@ describe('configWarnings', () => {
     expect(warnings.join(' ')).toMatch(/RECOVERY_INTERVAL_MS/);
   });
 
-  it('does not flag in-memory persistence outside production', () => {
+  it('flags in-memory persistence in every environment', () => {
     // Arrange
     const config = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'development' });
 
@@ -256,10 +257,10 @@ describe('configWarnings', () => {
     const warnings = configWarnings(config);
 
     // Assert
-    expect(warnings).toEqual([]);
+    expect(warnings.join(' ')).toMatch(/PERSISTENCE=memory/);
   });
 
-  it('flags in-memory persistence in production', () => {
+  it('escalates the in-memory warning in production', () => {
     // Arrange
     const config = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'production' });
 

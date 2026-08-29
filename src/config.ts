@@ -244,8 +244,12 @@ export function configWarnings(config: AppConfig): string[] {
   const warnings: string[] = [];
   const isProduction = config.nodeEnv === 'production';
 
-  if (isProduction && config.persistence === 'memory') {
-    warnings.push('PERSISTENCE=memory in production: all data is lost on restart');
+  if (config.persistence === 'memory') {
+    warnings.push(
+      isProduction
+        ? 'PERSISTENCE=memory in production: all data is lost on restart — use PERSISTENCE=dynamodb'
+        : 'PERSISTENCE=memory: the datastore is in-process; all data is lost when the server restarts',
+    );
   }
   if (config.security.allowInsecureTargetUrls) {
     warnings.push(

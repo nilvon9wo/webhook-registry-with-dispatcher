@@ -81,9 +81,10 @@ It is a living document, updated as implementation proceeds.
   we implement it, but the **default** is the in-process store because a fresh
   clone (or a reviewer, or CI) can then run `npm install && npm run dev` / `npm
   test` with zero AWS setup. `dynamodb` is one env var away (`.env.example`
-  shows the exact toggle). Running `memory` where it matters is not silent:
-  `configWarnings` emits a startup `config.warning` when `PERSISTENCE=memory`
-  with `NODE_ENV=production`. Trade-off accepted: the in-memory store does not
+  shows the exact toggle). Running `memory` is never silent: `configWarnings`
+  emits a startup `config.warning` for `PERSISTENCE=memory` in **every**
+  environment (escalated wording under `NODE_ENV=production`). Trade-off
+  accepted: the in-memory store does not
   survive a process restart (including a `tsx watch` reload), so manual testing
   that needs durable state should switch to `dynamodb` (`docs/13` §2.1 / §8).
 - **DynamoDB in tests:** unit tests fully mock the repositories. DynamoDB-backed
