@@ -110,6 +110,26 @@ so keep the retry scenarios on the local inbox with the guard off.)
 
 ## 3. Golden path
 
+### Conventions for this section
+
+`$SUB1`, `$SUB2`, `$EVT1`, `$DEL1` are **shell variables you set yourself** from
+the previous response — they are not literal strings the server knows. Each
+"create" step below shows a command that captures the new id into a variable;
+later steps reuse it. If you prefer, read the id off the response and set it by
+hand, e.g. `SUB1=sub_093505e2-…`.
+
+Paste this helper once (Git Bash) so the capture commands work without `jq`.
+It reads the first `"<key>":"<value>"` pair from stdin:
+
+```bash
+jval() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
+```
+
+(If you have `jq`, `... | jq -r .id` is equivalent and more robust.)
+
+If you skip the helper and a command prints `subscription not found: $SUB1` or
+similar, it means the variable is unset — go back and set it.
+
 ### G1 — health check
 
 ```bash
@@ -121,62 +141,70 @@ curl -i localhost:3000/health
 ### G2 — create a subscription
 
 ```bash
-curl -i -X POST localhost:3000/subscriptions \
+RESP=$(curl -s -X POST localhost:3000/subscriptions \
   -H 'content-type: application/json' \
-  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/orders"}'
+  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/orders"}')
+echo "$RESP"
+SUB1=$(echo "$RESP" | jval id); echo "SUB1=$SUB1"
 ```
 
-**Expect:** `201`; `Location: /subscriptions/sub_…`; body has `id` (starts
-`sub_`), `eventType`, `targetUrl`, equal `createdAt` / `updatedAt`.
-**Record the id** — call it `SUB1`.
+**Expect:** the printed body has `id` (starts `sub_`), `eventType`, `targetUrl`,
+equal `createdAt` / `updatedAt`; the last line reads `SUB1=sub_…`. (Run the
+`curl` on its own with `-i` if you also want to see the `201` status and the
+`Location: /subscriptions/sub_…` header.)
 
 ### G3 — read it back
 
 ```bash
-curl -s localhost:3000/subscriptions/SUB1
+curl -s localhost:3000/subscriptions/$SUB1
 curl -s localhost:3000/subscriptions
 curl -s 'localhost:3000/subscriptions?eventType=order.created'
 curl -s 'localhost:3000/subscriptions?eventType=nope'
 ```
 
-**Expect:** the single GET returns `SUB1`; the list returns `{"items":[…]}`
-containing it; the filtered list contains it; the `nope` filter returns
-`{"items":[]}`.
+**Expect:** the single GET returns the `$SUB1` object; the plain list returns
+`{"items":[…]}` containing it; the `order.created` filter contains it; the
+`nope` filter returns `{"items":[]}`.
 
 ### G4 — publish a matching event
 
 ```bash
-curl -i -X POST localhost:3000/events \
+RESP=$(curl -s -X POST localhost:3000/events \
   -H 'content-type: application/json' \
-  -d '{"type":"order.created","data":{"orderId":"12345"}}'
+  -d '{"type":"order.created","data":{"orderId":"12345"}}')
+echo "$RESP"
+EVT1=$(echo "$RESP" | jval id); echo "EVT1=$EVT1"
 ```
 
 **Expect:**
 
-- Response `202` immediately (no wait); body has `id` (starts `evt_`), `type`,
-  `data`, `createdAt`. **Record the id** — `EVT1`.
+- Response is immediate (no wait — it is `202 Accepted`); body has `id` (starts
+  `evt_`), `type`, `data`, `createdAt`.
 - **Inbox** shows one `POST /orders` within ~1 s: `content-type: application/json`,
-  `X-Webhook-Event-Id: EVT1`, `X-Webhook-Delivery-Id: del_…`,
-  `X-Webhook-Attempt: 1`, body `{"id":"EVT1","type":"order.created","timestamp":"…Z","data":{"orderId":"12345"}}`.
+  `X-Webhook-Event-Id` = `$EVT1`, `X-Webhook-Delivery-Id: del_…`,
+  `X-Webhook-Attempt: 1`, body
+  `{"id":"<EVT1>","type":"order.created","timestamp":"…Z","data":{"orderId":"12345"}}`.
 - Service log shows `dispatch.started` (`matchedCount: 1`) then
   `delivery.succeeded` (`httpStatus: 200`).
 
 ```bash
-curl -s 'localhost:3000/deliveries?eventId=EVT1'
+curl -s "localhost:3000/deliveries?eventId=$EVT1"
 ```
 
 **Expect:** one delivery, `status: "delivered"`, `attempts: 1`,
-`lastStatusCode: 200`, `completedAt` set, `subscriptionId: SUB1`.
+`lastStatusCode: 200`, `completedAt` set, `subscriptionId` = `$SUB1`.
 
 ### G5 — publish a non-matching event
 
 ```bash
-curl -i -X POST localhost:3000/events \
-  -H 'content-type: application/json' \
-  -d '{"type":"customer.created"}'
+RESP=$(curl -s -X POST localhost:3000/events \
+  -H 'content-type: application/json' -d '{"type":"customer.created"}')
+echo "$RESP"
+EVT_NM=$(echo "$RESP" | jval id)
+curl -s "localhost:3000/deliveries?eventId=$EVT_NM"
 ```
 
-**Expect:** `202`; **inbox unchanged**; `GET /deliveries?eventId=<new id>`
+**Expect:** the event is accepted; **inbox unchanged**; the `/deliveries` query
 returns `{"items":[]}`; log shows `dispatch.started` with `matchedCount: 0`.
 
 ### G6 — event with no `data`
@@ -186,57 +214,77 @@ curl -s -X POST localhost:3000/events \
   -H 'content-type: application/json' -d '{"type":"order.created"}'
 ```
 
-**Expect:** `202`; the delivered webhook body has `"data": {}`.
+**Expect:** accepted; the delivered webhook body has `"data": {}`.
 
 ### G7 — fan-out to multiple subscribers
 
 Create a second subscription for the same type, pointing at a different inbox
-path:
+path, then publish one event:
 
 ```bash
-curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/orders-copy"}'
+SUB2=$(curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
+  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/orders-copy"}' | jval id)
+echo "SUB2=$SUB2"
+EVT2=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"order.created","data":{"orderId":"777"}}' | jval id)
+curl -s "localhost:3000/deliveries?eventId=$EVT2"
 ```
 
-Publish one `order.created` event.
-
-**Expect:** the inbox shows **two** POSTs (`/orders` and `/orders-copy`);
-`GET /deliveries?eventId=<id>` returns **two** deliveries, both `delivered`.
+**Expect:** the inbox shows **two** POSTs (`/orders` and `/orders-copy`); the
+`/deliveries` query returns **two** deliveries, both `delivered`.
 
 ### G8 — replace a subscription (re-routes matching)
 
 ```bash
-curl -i -X PUT localhost:3000/subscriptions/SUB1 \
+curl -i -X PUT localhost:3000/subscriptions/$SUB1 \
   -H 'content-type: application/json' \
   -d '{"eventType":"order.updated","targetUrl":"http://localhost:4000/orders"}'
 ```
 
 **Expect:** `200`; `id` unchanged, `createdAt` unchanged, `eventType` now
-`order.updated`, `updatedAt` advanced. Now publish an `order.created` event →
-`SUB1` no longer receives it (the `orders-copy` subscription still does). Publish
-an `order.updated` event → `SUB1` receives it.
+`order.updated`, `updatedAt` advanced.
+
+```bash
+curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"order.created","data":{"n":1}}' > /dev/null   # -> only $SUB2 / orders-copy
+curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"order.updated","data":{"n":2}}' > /dev/null   # -> $SUB1 / orders
+```
+
+**Expect:** the `order.created` event reaches only `/orders-copy`; the
+`order.updated` event reaches `/orders` (i.e. `$SUB1` now).
 
 ### G9 — delete a subscription
 
 ```bash
-curl -i -X DELETE localhost:3000/subscriptions/SUB1
-curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/subscriptions/SUB1
+curl -i -X DELETE localhost:3000/subscriptions/$SUB1
+curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/subscriptions/$SUB1
 ```
 
-**Expect:** `204`, then `404`. Publish an `order.updated` event → `SUB1` gets
-nothing. **But** `GET /deliveries?subscriptionId=SUB1` still returns the
-historical delivery from G8 — deletion does not rewrite history.
+**Expect:** `204`, then `404`.
+
+```bash
+curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"order.updated","data":{"n":3}}' > /dev/null
+curl -s "localhost:3000/deliveries?subscriptionId=$SUB1"
+```
+
+**Expect:** the new `order.updated` event reaches nothing on `/orders` (`$SUB1`
+is gone) — **but** the `/deliveries` query still returns the historical delivery
+from G8. Deletion does not rewrite history.
 
 ### G10 — filter deliveries
 
 ```bash
 curl -s 'localhost:3000/deliveries?status=delivered'
 curl -s 'localhost:3000/deliveries?status=failed'
-curl -s 'localhost:3000/deliveries/<a real delivery id>'
+DEL1=$(curl -s 'localhost:3000/deliveries?status=delivered' | jval id)
+curl -s "localhost:3000/deliveries/$DEL1"
+curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/deliveries/del_made_up
 ```
 
 **Expect:** `status=delivered` lists the successes; `status=failed` is empty so
-far; the single GET returns the full record; a made-up id → `404`.
+far; the single GET returns one full record; the made-up id → `404`.
 
 ---
 
@@ -337,92 +385,105 @@ error (with stack) goes to the log only.
 ## 5. Retry & recovery
 
 Use the local inbox with your `.env` (`MAX_DELIVERY_ATTEMPTS=4`,
-`RETRY_BASE_DELAY_MS=1000`).
+`RETRY_BASE_DELAY_MS=1000`). Each scenario uses its **own event type** so it does
+not matter what subscriptions §3 left behind. The `jval` helper from §3 is used
+again. To watch a delivery, re-run its `/deliveries?eventId=…` line every second
+or so.
 
 ### R1 — retry, then eventual success
 
-Create a subscription whose target fails twice then succeeds:
-
 ```bash
 curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/flaky?status=500,500,200"}'
-```
-
-Publish one `order.created` event, then poll the delivery every second or so
-(re-run this a few times):
-
-```bash
-curl -s 'localhost:3000/deliveries?eventId=<id>'
+  -d '{"eventType":"retry.ok","targetUrl":"http://localhost:4000/flaky?status=500,500,200"}' > /dev/null
+EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"retry.ok"}' | jval id); echo "EVT=$EVT"
+curl -s "localhost:3000/deliveries?eventId=$EVT"
 ```
 
 **Expect:**
 
-- Inbox shows 3 POSTs, spaced ~1 s, ~2 s apart (equal-jitter backoff), responding
-  `500`, `500`, `200`.
+- Inbox shows 3 POSTs to `/flaky`, ~1 s then ~2 s apart (equal-jitter backoff),
+  responding `500`, `500`, `200`.
 - The delivery goes `pending → delivering → pending → … → delivered`,
-  `attempts` climbing to `3`, `lastError` cleared once it succeeds, `nextAttemptAt`
-  set between attempts.
+  `attempts` climbing to `3`, `lastError` cleared once it succeeds,
+  `nextAttemptAt` set between attempts.
 - Log shows `delivery.retry_scheduled` (with `backoffMs`, `nextAttemptAt`) twice,
   then `delivery.succeeded`.
 
 ### R2 — retry budget exhausted → failed
 
-Target that always fails:
-
 ```bash
 curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/broken?status=503"}'
+  -d '{"eventType":"retry.exhaust","targetUrl":"http://localhost:4000/broken?status=503"}' > /dev/null
+EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"retry.exhaust"}' | jval id); echo "EVT=$EVT"
+curl -s "localhost:3000/deliveries?eventId=$EVT"
 ```
 
-Publish an event.
-
-**Expect:** exactly **4** POSTs to the inbox (`MAX_DELIVERY_ATTEMPTS`), then the
-delivery is `failed`, `attempts: 4`, `lastStatusCode: 503`, `lastError: "HTTP 503"`,
-`completedAt` set. Log ends with `delivery.failed` (`reason: retry_budget_exhausted`).
+**Expect:** exactly **4** POSTs to `/broken` (`MAX_DELIVERY_ATTEMPTS`), then the
+delivery is `failed`, `attempts: 4`, `lastStatusCode: 503`, `lastError` set,
+`completedAt` set. Log ends with `delivery.failed`
+(`reason: retry_budget_exhausted`).
 
 ### R3 — timeout is retried
 
+Restart the service with a short timeout first, then run the scenario:
+
 ```bash
+# terminal 2:  (Ctrl+C, then)   WEBHOOK_TIMEOUT_MS=1000 npm run dev
 curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/slow?delay=8000"}'
+  -d '{"eventType":"retry.timeout","targetUrl":"http://localhost:4000/slow?delay=8000"}' > /dev/null
+EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"retry.timeout"}' | jval id); echo "EVT=$EVT"
+curl -s "localhost:3000/deliveries?eventId=$EVT"
 ```
 
-Restart the service with `WEBHOOK_TIMEOUT_MS=1000`, publish an event.
-
-**Expect:** each attempt times out after ~1 s (the inbox still logs the request,
-because it received it — it just responds late); the delivery retries and
-finally `failed` with `lastError: "request timed out"`.
+**Expect:** each attempt times out after ~1 s (the inbox still logs the request —
+it received it, it just answers late); the delivery retries and finally `failed`
+with `lastError` mentioning a timeout. Restore `.env` and restart afterwards.
 
 ### R4 — non-retryable failure is not retried
 
 ```bash
 curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/gone?status=404"}'
+  -d '{"eventType":"retry.permanent","targetUrl":"http://localhost:4000/gone?status=404"}' > /dev/null
+EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"retry.permanent"}' | jval id); echo "EVT=$EVT"
+curl -s "localhost:3000/deliveries?eventId=$EVT"
 ```
 
-Publish an event.
-
-**Expect:** exactly **one** POST; delivery immediately `failed`,
-`lastStatusCode: 404`, log `delivery.failed` with `reason: non_retryable_response`.
+**Expect:** exactly **one** POST to `/gone`; the delivery is `failed` almost
+immediately, `lastStatusCode: 404`, log `delivery.failed` with
+`reason: non_retryable_response`.
 
 ### R5 — crash recovery
 
-1. Point a subscription at a target that is currently failing
-   (`http://localhost:4000/downthenup?status=503`) and publish an event. The
-   delivery becomes `pending` with a retry scheduled (`GET /deliveries?eventId=`).
-2. **Kill the service** in terminal 2 (`Ctrl+C`, or `kill -9` the process to
-   simulate a hard crash). The in-process retry timer is now gone.
-3. Change the target to succeed: `curl 'localhost:4000/_inbox/clear'` then note
-   that `?status=503` sequences are per-URL — instead publish against a fresh
-   path. Simpler: leave it failing and just confirm the **sweep picks it up**.
-4. **Restart** `npm run dev`. Within `RECOVERY_INTERVAL_MS` (5 s) the log shows
+```bash
+curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
+  -d '{"eventType":"crash.test","targetUrl":"http://localhost:4000/crash?status=503"}' > /dev/null
+EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"crash.test"}' | jval id); echo "EVT=$EVT"
+curl -s "localhost:3000/deliveries?eventId=$EVT"    # status: pending, nextAttemptAt set
+```
+
+1. The first POST to `/crash` gets `503`; the delivery is `pending` with a retry
+   scheduled.
+2. **Within the ~1 s before the retry fires, kill the service** in terminal 2
+   (`Ctrl+C`, or kill the PID to simulate a hard crash — see §5 note below). The
+   in-process retry timer dies with it.
+3. **Restart** `npm run dev`. Within `RECOVERY_INTERVAL_MS` (5 s) the log shows
    `recovery.started` then `recovery.sweep.completed` with `resumedCount: 1`, and
-   `GET /deliveries` shows the delivery attempted again (`attempts` incremented).
-   If you had made the target succeed, it now goes `delivered`; otherwise it
-   keeps retrying until the budget is spent, then `failed`.
+   `curl -s "localhost:3000/deliveries?eventId=$EVT"` shows `attempts`
+   incremented — recovery re-drove it. It keeps retrying `/crash` until the
+   budget is spent (`failed`); if you edit the target to stop failing it would go
+   `delivered` instead.
 
 **Expect:** the abandoned delivery is not lost — recovery resumes it after the
 restart, and the attempt cap is still honoured.
+
+> **Hard-crash kill (Git Bash / Windows):** find the PID with
+> `netstat -ano | grep :3000 | grep LISTENING` and then `taskkill //F //PID <pid>`.
+> Never `taskkill //IM node.exe` — that kills every Node process on the machine.
 
 ### R6 — recovery leaves completed deliveries alone
 
