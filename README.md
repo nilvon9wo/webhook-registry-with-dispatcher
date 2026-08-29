@@ -108,9 +108,13 @@ A multi-stage [`Dockerfile`](Dockerfile) is included and verified (build → run
 health / publish / graceful `SIGTERM` shutdown). Runs as a non-root user, ~350 MB.
 
 ```bash
-docker build -t webhook-registry .
-docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry
+docker build -t webhook-registry .          # or: npm run docker:build
+docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry   # npm run docker:run
 ```
+
+If `docker run` reports `bind: … address already in use`, a local `npm start` /
+`npm run dev` is still holding port 3000 — stop it, or map a different host port
+(`-p 3010:3000`).
 
 For DynamoDB, pass `-e PERSISTENCE=dynamodb -e AWS_REGION=…` and supply
 credentials the SDK can find (mount `~/.aws` read-only, or `-e AWS_*`). Docker is
