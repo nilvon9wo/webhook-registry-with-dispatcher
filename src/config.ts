@@ -198,6 +198,58 @@ export function loadConfig(env: EnvRecord = process.env): AppConfig {
   return config;
 }
 
+/**
+ * The effective operational settings, safe to log at startup. Contains no
+ * secrets (there are none in config) — AWS credentials come from the SDK
+ * provider chain, never from here.
+ */
+export function configSummary(config: AppConfig): Record<string, unknown> {
+  return {
+    nodeEnv: config.nodeEnv,
+    port: config.port,
+    logLevel: config.logLevel,
+    persistence: config.persistence,
+    awsRegion: config.aws.region,
+    dynamoEndpoint: config.aws.dynamoEndpoint ?? null,
+    maxRequestBodyBytes: config.http.maxRequestBodyBytes,
+    webhookTimeoutMs: config.delivery.webhookTimeoutMs,
+    maxDeliveryAttempts: config.delivery.maxAttempts,
+    retryBaseDelayMs: config.delivery.retryBaseDelayMs,
+    retryMaxDelayMs: config.delivery.retryMaxDelayMs,
+    recoveryIntervalMs: config.recovery.intervalMs,
+    stuckDeliveringThresholdMs: config.recovery.stuckDeliveringThresholdMs,
+    allowInsecureTargetUrls: config.security.allowInsecureTargetUrls,
+    ssrfGuardEnabled: config.security.ssrfGuardEnabled,
+  };
+}
+
+/**
+ * Operationally risky configuration combinations — logged as warnings at
+ * startup rather than rejected, since each is legitimate in some context.
+ */
+export function configWarnings(config: AppConfig): string[] {
+  const warnings: string[] = [];
+  const isProduction = config.nodeEnv === 'production';
+
+  if (isProduction && config.persistence === 'memory') {
+    warnings.push('PERSISTENCE=memory in production: all data is lost on restart');
+  }
+  if (config.security.allowInsecureTargetUrls) {
+    warnings.push(
+      'ALLOW_INSECURE_TARGET_URLS is enabled: plain http:// webhook targets are accepted',
+    );
+  }
+  if (!config.security.ssrfGuardEnabled) {
+    warnings.push(
+      'SSRF_GUARD_ENABLED is off: webhook targets are not checked against private ranges',
+    );
+  }
+  if (config.recovery.intervalMs === 0) {
+    warnings.push('RECOVERY_INTERVAL_MS=0: abandoned/retryable deliveries will not be recovered');
+  }
+  return warnings;
+}
+
 interface IntBounds {
   readonly min?: number;
   readonly max?: number;

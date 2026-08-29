@@ -5,7 +5,7 @@
 
 import { buildApplication } from './container.js';
 import type { AppConfig } from './config.js';
-import { ConfigError, loadConfig } from './config.js';
+import { ConfigError, configSummary, configWarnings, loadConfig } from './config.js';
 
 function loadConfigOrExit(): AppConfig | undefined {
   try {
@@ -27,6 +27,11 @@ function main(): void {
   }
 
   const app = buildApplication(config);
+
+  app.logger.info('configuration loaded', configSummary(config));
+  for (const warning of configWarnings(config)) {
+    app.logger.warn('configuration warning', { warning });
+  }
 
   app.httpServer.listen(config.port, () => {
     app.logger.info('server listening', { port: config.port, persistence: config.persistence });

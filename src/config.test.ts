@@ -1,26 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import { captureError } from '../tests/support/capture-error.js';
-import { ConfigError, loadConfig } from './config.js';
+import { ConfigError, configSummary, configWarnings, loadConfig } from './config.js';
 
 describe('loadConfig', () => {
-  it('returns safe defaults when the environment is empty', () => {
+  it('returns safe defaults for every setting when the environment is empty', () => {
     // Arrange — none: an empty environment is itself the input under test.
 
     // Act
     const config = loadConfig({});
 
     // Assert
-    expect(config.port).toBe(3000);
-    expect(config.logLevel).toBe('info');
-    expect(config.persistence).toBe('memory');
-    expect(config.aws.region).toBe('eu-central-1');
-    expect(config.aws.dynamoEndpoint).toBeUndefined();
-    expect(config.delivery.webhookTimeoutMs).toBe(5000);
-    expect(config.delivery.maxAttempts).toBe(5);
-    expect(config.delivery.retryBaseDelayMs).toBe(500);
-    expect(config.recovery.intervalMs).toBe(60_000);
-    expect(config.security.allowInsecureTargetUrls).toBe(false);
-    expect(config.security.ssrfGuardEnabled).toBe(true);
+    expect(config).toEqual({
+      nodeEnv: 'development',
+      port: 3000,
+      logLevel: 'info',
+      persistence: 'memory',
+      aws: {
+        region: 'eu-central-1',
+        dynamoEndpoint: undefined,
+        tables: {
+          subscriptions: 'webhook-registry-subscriptions',
+          events: 'webhook-registry-events',
+          deliveries: 'webhook-registry-deliveries',
+        },
+      },
+      http: { maxRequestBodyBytes: 1_048_576 },
+      delivery: {
+        webhookTimeoutMs: 5000,
+        maxAttempts: 5,
+        retryBaseDelayMs: 500,
+        retryMaxDelayMs: 30_000,
+      },
+      recovery: {
+        intervalMs: 60_000,
+        stuckDeliveringThresholdMs: 60_000,
+        batchLimit: 100,
+      },
+      security: {
+        allowInsecureTargetUrls: false,
+        ssrfGuardEnabled: true,
+      },
+    });
   });
 
   it('parses overrides from the environment', () => {
@@ -149,5 +169,71 @@ describe('loadConfig', () => {
     // Assert
     expect(error).toBeInstanceOf(ConfigError);
     expect((error as ConfigError).problems).toHaveLength(2);
+  });
+});
+
+describe('configSummary', () => {
+  it('contains the operational settings and no credential-like fields', () => {
+    // Arrange
+    const config = loadConfig({ AWS_REGION: 'us-east-1' });
+
+    // Act
+    const summary = configSummary(config);
+
+    // Assert
+    expect(summary).toMatchObject({
+      port: 3000,
+      persistence: 'memory',
+      awsRegion: 'us-east-1',
+      webhookTimeoutMs: 5000,
+      maxDeliveryAttempts: 5,
+      recoveryIntervalMs: 60_000,
+    });
+    expect(JSON.stringify(summary).toLowerCase()).not.toMatch(/secret|password|token|credential/);
+  });
+});
+
+describe('configWarnings', () => {
+  it('is empty for a safe default configuration', () => {
+    // Arrange
+    const config = loadConfig({});
+
+    // Act
+    const warnings = configWarnings(config);
+
+    // Assert
+    expect(warnings).toEqual([]);
+  });
+
+  it('flags insecure target URLs, a disabled SSRF guard, and a disabled recovery sweep', () => {
+    // Arrange
+    const config = loadConfig({
+      ALLOW_INSECURE_TARGET_URLS: 'true',
+      SSRF_GUARD_ENABLED: 'false',
+      RECOVERY_INTERVAL_MS: '0',
+    });
+
+    // Act
+    const warnings = configWarnings(config);
+
+    // Assert
+    expect(warnings).toHaveLength(3);
+    expect(warnings.join(' ')).toMatch(/ALLOW_INSECURE_TARGET_URLS/);
+    expect(warnings.join(' ')).toMatch(/SSRF_GUARD_ENABLED/);
+    expect(warnings.join(' ')).toMatch(/RECOVERY_INTERVAL_MS/);
+  });
+
+  it('flags in-memory persistence only in production', () => {
+    // Arrange
+    const dev = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'development' });
+    const prod = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'production' });
+
+    // Act
+    const devWarnings = configWarnings(dev);
+    const prodWarnings = configWarnings(prod);
+
+    // Assert
+    expect(devWarnings).toEqual([]);
+    expect(prodWarnings.join(' ')).toMatch(/PERSISTENCE=memory in production/);
   });
 });

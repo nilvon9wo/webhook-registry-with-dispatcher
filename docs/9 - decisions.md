@@ -137,6 +137,14 @@ It is a living document, updated as implementation proceeds.
   states — `pending | delivering | delivered | failed` as the spec suggests.
 - **AuthN/AuthZ:** out of scope; documented as an assumption.
 
+- **Configuration review (prompt 15):** every operational setting in the spec §12
+  list is an env var with a safe default and aggregated validation
+  (`config.ts` + `.env.example`, both cross-checked in a test). No secrets in
+  config — AWS credentials only from the SDK provider chain. Startup logs a
+  non-secret `configSummary` and `configWarnings` for risky combinations
+  (`PERSISTENCE=memory` in production, insecure target URLs, SSRF guard off,
+  recovery disabled). Added `requests.http` and a README Configuration section.
+
 ## 4. Explicitly out of scope for the four-hour build
 
 SQS / durable queue, multi-instance coordination, full SSRF protection
