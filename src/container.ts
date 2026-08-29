@@ -22,6 +22,11 @@ import { systemClock, type Clock } from './application/clock.js';
 import { randomIdGenerator } from './domain/ids.js';
 import { createHttpWebhookClient, type WebhookClient } from './infrastructure/webhook-client.js';
 import {
+  allowAllTargetUrlGuard,
+  createDnsTargetUrlGuard,
+  type TargetUrlGuard,
+} from './infrastructure/ssrf-guard.js';
+import {
   InMemoryDeliveryRepository,
   InMemoryEventRepository,
   InMemorySubscriptionRepository,
@@ -99,6 +104,8 @@ export interface BuildApplicationOptions {
   readonly webhookClient?: WebhookClient;
   /** Replaces the real (setTimeout) retry scheduler (tests inject a manual one). */
   readonly scheduler?: Scheduler;
+  /** Replaces the SSRF guard (tests inject one with a fake DNS lookup). */
+  readonly targetUrlGuard?: TargetUrlGuard;
 }
 
 export function buildApplication(
@@ -109,11 +116,16 @@ export function buildApplication(
   const clock = options.clock ?? systemClock;
   const repositories = buildRepositories(config, logger);
 
+  const targetUrlGuard =
+    options.targetUrlGuard ??
+    (config.security.ssrfGuardEnabled ? createDnsTargetUrlGuard() : allowAllTargetUrlGuard);
+
   const subscriptionService = new SubscriptionService({
     repository: repositories.subscriptions,
     clock,
     ids: randomIdGenerator,
     targetUrlPolicy: { allowInsecure: config.security.allowInsecureTargetUrls },
+    targetUrlGuard,
   });
 
   const dispatcher = new Dispatcher({
@@ -121,6 +133,7 @@ export function buildApplication(
     events: repositories.events,
     deliveries: repositories.deliveries,
     webhookClient: options.webhookClient ?? createHttpWebhookClient(),
+    targetUrlGuard,
     scheduler: options.scheduler ?? realScheduler,
     clock,
     ids: randomIdGenerator,

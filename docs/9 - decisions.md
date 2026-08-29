@@ -52,8 +52,12 @@ It is a living document, updated as implementation proceeds.
   path; the recovery sweep is the crash safety net, never the primary mechanism.
 - **HTTPS enforcement:** `https:` targets required by default;
   `ALLOW_INSECURE_TARGET_URLS=true` permits `http:` (needed for local E2E).
-- **SSRF guard:** on by default — rejects loopback / RFC1918 / link-local /
-  `169.254.169.254`. DNS-rebinding is out of scope and documented.
+- **SSRF guard (implemented prompt 16):** `src/infrastructure/ssrf-guard.ts`,
+  on by default. Resolves the target host and rejects loopback / private (RFC
+  1918 / CGNAT / IPv6 ULA) / link-local / unspecified / `169.254.169.254`.
+  Enforced at subscription create/replace (`400`) **and** at each delivery
+  attempt (permanent `failed`). DNS-rebinding TOCTOU is out of scope and
+  documented in `docs/10 - security.md`, which holds the full security review.
 - **Outbound webhook:** body `{ id, type, timestamp, data }` plus headers
   `Content-Type: application/json`, `X-Webhook-Event-Id`, `X-Webhook-Delivery-Id`,
   `X-Webhook-Attempt`.

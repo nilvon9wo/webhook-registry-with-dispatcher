@@ -69,7 +69,7 @@ async function route(
 ): Promise<HandlerResult> {
   const bodyResult = await readBody(request, deps.maxRequestBodyBytes);
   if (!bodyResult.ok) {
-    return errorResponse(413, 'Request body too large');
+    return { ...errorResponse(413, 'Request body too large'), headers: { Connection: 'close' } };
   }
 
   let body: unknown;
@@ -102,17 +102,27 @@ async function readBody(request: http.IncomingMessage, maxBytes: number): Promis
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    let tooLarge = false;
 
     request.on('data', (chunk: Buffer) => {
+      if (tooLarge) {
+        return;
+      }
       size += chunk.length;
       if (size > maxBytes) {
-        request.destroy();
+        tooLarge = true;
+        // Stop buffering but keep draining the socket so the 413 response can
+        // still be written and the connection stays consistent.
         resolve({ ok: false });
         return;
       }
       chunks.push(chunk);
     });
-    request.on('end', () => resolve({ ok: true, text: Buffer.concat(chunks).toString('utf8') }));
+    request.on('end', () => {
+      if (!tooLarge) {
+        resolve({ ok: true, text: Buffer.concat(chunks).toString('utf8') });
+      }
+    });
     request.on('error', reject);
   });
 }

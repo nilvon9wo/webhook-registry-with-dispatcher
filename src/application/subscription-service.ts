@@ -7,12 +7,15 @@
 
 import type { IdGenerator } from '../domain/ids.js';
 import type { TargetUrlPolicy } from '../domain/target-url.js';
+import { failValidation } from '../domain/validation.js';
 import {
   createSubscription,
   parseSubscriptionInput,
   replaceSubscription,
   type Subscription,
+  type SubscriptionInput,
 } from '../domain/subscription.js';
+import { SsrfBlockedError, type TargetUrlGuard } from '../infrastructure/ssrf-guard.js';
 import type { Clock } from './clock.js';
 import { ResourceNotFoundError } from './errors.js';
 import type { SubscriptionListFilter, SubscriptionRepository } from './ports.js';
@@ -22,6 +25,7 @@ export interface SubscriptionServiceDeps {
   readonly clock: Clock;
   readonly ids: IdGenerator;
   readonly targetUrlPolicy: TargetUrlPolicy;
+  readonly targetUrlGuard: TargetUrlGuard;
 }
 
 export class SubscriptionService {
@@ -29,17 +33,19 @@ export class SubscriptionService {
   private readonly clock: Clock;
   private readonly ids: IdGenerator;
   private readonly targetUrlPolicy: TargetUrlPolicy;
+  private readonly targetUrlGuard: TargetUrlGuard;
 
   constructor(deps: SubscriptionServiceDeps) {
     this.repository = deps.repository;
     this.clock = deps.clock;
     this.ids = deps.ids;
     this.targetUrlPolicy = deps.targetUrlPolicy;
+    this.targetUrlGuard = deps.targetUrlGuard;
   }
 
   /** Validates the body and persists a new subscription. Throws ValidationError on bad input. */
   async create(body: unknown): Promise<Subscription> {
-    const input = parseSubscriptionInput(body, this.targetUrlPolicy);
+    const input = await this.parseAndGuard(body);
     const subscription = createSubscription(input, this.ids.next('subscription'), this.clock.now());
     await this.repository.save(subscription);
     return subscription;
@@ -66,7 +72,7 @@ export class SubscriptionService {
     if (existing === undefined) {
       throw new ResourceNotFoundError('subscription', id);
     }
-    const input = parseSubscriptionInput(body, this.targetUrlPolicy);
+    const input = await this.parseAndGuard(body);
     const updated = replaceSubscription(existing, input, this.clock.now());
     await this.repository.save(updated);
     return updated;
@@ -78,5 +84,18 @@ export class SubscriptionService {
     if (!existed) {
       throw new ResourceNotFoundError('subscription', id);
     }
+  }
+
+  private async parseAndGuard(body: unknown): Promise<SubscriptionInput> {
+    const input = parseSubscriptionInput(body, this.targetUrlPolicy);
+    try {
+      await this.targetUrlGuard.assertAllowed(input.targetUrl);
+    } catch (error) {
+      if (error instanceof SsrfBlockedError) {
+        failValidation(`targetUrl rejected: ${error.reason}`);
+      }
+      throw error;
+    }
+    return input;
   }
 }

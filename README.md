@@ -26,6 +26,7 @@ and AI contributors work from an explicit, reviewable source of truth.
 | [7 - troubleshooting.md](docs/7%20-%20troubleshooting.md) | Expected failure diagnosis and recovery guidance          |
 | [8 - setup.md](docs/8%20-%20setup.md)                     | Development environment, tooling, accounts, and AWS setup |
 | [9 - decisions.md](docs/9%20-%20decisions.md)             | Reconciliation log and every implementation decision      |
+| [10 - security.md](docs/10%20-%20security.md)             | Security review: what is mitigated, what is documented    |
 
 ## Requirements
 

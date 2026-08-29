@@ -38,6 +38,7 @@ import {
 } from '../domain/retry-policy.js';
 import type { Subscription } from '../domain/subscription.js';
 import type { Logger } from '../infrastructure/logger.js';
+import { SsrfBlockedError, type TargetUrlGuard } from '../infrastructure/ssrf-guard.js';
 import type { WebhookClient } from '../infrastructure/webhook-client.js';
 import type { Clock } from './clock.js';
 import type { EventDispatcher } from './event-service.js';
@@ -55,6 +56,7 @@ export interface DispatcherDeps {
   readonly events: EventRepository;
   readonly deliveries: DeliveryRepository;
   readonly webhookClient: WebhookClient;
+  readonly targetUrlGuard: TargetUrlGuard;
   readonly scheduler: Scheduler;
   readonly clock: Clock;
   readonly ids: IdGenerator;
@@ -161,6 +163,25 @@ export class Dispatcher implements EventDispatcher {
       deliveryId: attempting.id,
       attempt: attempting.attempts,
     });
+
+    // Re-check the target at delivery time: the subscription may have been
+    // registered when the host resolved to a public address and now resolve to a
+    // private one. A blocked target is a permanent failure.
+    try {
+      await this.deps.targetUrlGuard.assertAllowed(attempting.targetUrl);
+    } catch (error) {
+      if (error instanceof SsrfBlockedError) {
+        const failed = completeFailed(attempting, {
+          statusCode: null,
+          error: `target blocked: ${error.reason}`,
+          now: this.deps.clock.now(),
+        });
+        await this.deps.deliveries.save(failed);
+        log.warn('delivery blocked by SSRF guard', { host: error.host, reason: error.reason });
+        return;
+      }
+      throw error;
+    }
 
     const startedAt = Date.now();
     const outcome = await this.deps.webhookClient.send({

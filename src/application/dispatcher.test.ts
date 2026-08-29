@@ -11,6 +11,11 @@ import {
   InMemorySubscriptionRepository,
 } from '../infrastructure/memory/in-memory-repositories.js';
 import { silentLogger } from '../infrastructure/logger.js';
+import {
+  allowAllTargetUrlGuard,
+  SsrfBlockedError,
+  type TargetUrlGuard,
+} from '../infrastructure/ssrf-guard.js';
 import type { WebhookClient, WebhookRequest } from '../infrastructure/webhook-client.js';
 import { fixedClock } from './clock.js';
 import { Dispatcher } from './dispatcher.js';
@@ -58,7 +63,10 @@ const EVENT: WebhookEvent = createEvent(
   new Date('2026-08-28T10:15:00.000Z'),
 );
 
-function newHarness(retryPolicy: RetryPolicy = NO_RETRY): Harness {
+function newHarness(
+  retryPolicy: RetryPolicy = NO_RETRY,
+  targetUrlGuard: TargetUrlGuard = allowAllTargetUrlGuard,
+): Harness {
   const subscriptions = new InMemorySubscriptionRepository();
   const events = new InMemoryEventRepository();
   void events.save(EVENT); // in-memory save populates synchronously
@@ -70,6 +78,7 @@ function newHarness(retryPolicy: RetryPolicy = NO_RETRY): Harness {
     events,
     deliveries,
     webhookClient,
+    targetUrlGuard,
     scheduler,
     clock: CLOCK,
     ids: sequentialIds(),
@@ -195,6 +204,29 @@ describe('Dispatcher.dispatchEvent', () => {
     expect(await bySubscription('sub_b')).toBe('failed');
     expect(await bySubscription('sub_c')).toBe('delivered');
     expect(webhookClient.requests).toHaveLength(3);
+  });
+
+  it('records a permanent failure without calling the webhook when the target is blocked at delivery time', async () => {
+    // Arrange — the target passed registration but now resolves somewhere blocked.
+    const blockingGuard = {
+      assertAllowed: async (): Promise<void> => {
+        throw new SsrfBlockedError('internal.example', 'resolves to a private address (10.0.0.1)');
+      },
+    };
+    const { dispatcher, subscriptions, deliveries, webhookClient } = newHarness(
+      NO_RETRY,
+      blockingGuard,
+    );
+    await subscriptions.save(aSubscription({ id: 'sub_a', eventType: 'order.created' }));
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+
+    // Assert
+    const [delivery] = await deliveries.list();
+    expect(delivery?.status).toBe('failed');
+    expect(delivery?.lastError).toContain('target blocked');
+    expect(webhookClient.requests).toHaveLength(0);
   });
 
   it('persists the delivering state before making the HTTP call (so a crash is recoverable)', async () => {

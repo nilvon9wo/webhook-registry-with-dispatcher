@@ -3,6 +3,11 @@ import { captureRejection } from '../../tests/support/capture-error.js';
 import { ValidationError } from '../domain/errors.js';
 import type { IdGenerator, IdKind } from '../domain/ids.js';
 import { InMemorySubscriptionRepository } from '../infrastructure/memory/in-memory-repositories.js';
+import {
+  allowAllTargetUrlGuard,
+  createDnsTargetUrlGuard,
+  SsrfBlockedError,
+} from '../infrastructure/ssrf-guard.js';
 import { fixedClock } from './clock.js';
 import { ResourceNotFoundError } from './errors.js';
 import { SubscriptionService } from './subscription-service.js';
@@ -25,6 +30,7 @@ function newService(clock = CLOCK): SubscriptionService {
     clock,
     ids: sequentialIds(),
     targetUrlPolicy: { allowInsecure: false },
+    targetUrlGuard: allowAllTargetUrlGuard,
   });
 }
 
@@ -74,6 +80,32 @@ describe('SubscriptionService.create', () => {
 
     // Assert
     expect(error).toBeInstanceOf(ValidationError);
+  });
+
+  it('rejects a target URL that resolves to a private address (SSRF guard)', async () => {
+    // Arrange — a guard whose DNS lookup returns a private IP.
+    const service = new SubscriptionService({
+      repository: new InMemorySubscriptionRepository(),
+      clock: CLOCK,
+      ids: sequentialIds(),
+      targetUrlPolicy: { allowInsecure: false },
+      targetUrlGuard: createDnsTargetUrlGuard({
+        lookup: async () => [{ address: '10.0.0.5' }],
+      }),
+    });
+
+    // Act
+    const error = await captureRejection(
+      service.create({
+        eventType: 'order.created',
+        targetUrl: 'https://internal.example.com/hook',
+      }),
+    );
+
+    // Assert
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as ValidationError).problems.join(' ')).toMatch(/private/);
+    expect(error).not.toBeInstanceOf(SsrfBlockedError);
   });
 });
 

@@ -10,6 +10,7 @@ import {
   InMemorySubscriptionRepository,
 } from '../infrastructure/memory/in-memory-repositories.js';
 import { silentLogger } from '../infrastructure/logger.js';
+import { allowAllTargetUrlGuard } from '../infrastructure/ssrf-guard.js';
 import type { WebhookClient, WebhookRequest } from '../infrastructure/webhook-client.js';
 import { fixedClock } from './clock.js';
 import { Dispatcher } from './dispatcher.js';
@@ -57,6 +58,7 @@ function newHarness(): Harness {
     events,
     deliveries,
     webhookClient,
+    targetUrlGuard: allowAllTargetUrlGuard,
     scheduler: new ManualScheduler(),
     clock: CLOCK,
     ids: sequentialIds(),

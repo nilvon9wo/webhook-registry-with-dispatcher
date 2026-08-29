@@ -29,7 +29,10 @@ export async function startTestApp(options: StartTestAppOptions = {}): Promise<T
   const { env, ...buildOptions } = options;
   const config = loadConfig({
     PERSISTENCE: 'memory',
+    // Tests deliver to loopback webhook servers, which the SSRF guard would block
+    // and which need http://. Security-specific tests re-enable these.
     ALLOW_INSECURE_TARGET_URLS: 'true',
+    SSRF_GUARD_ENABLED: 'false',
     LOG_LEVEL: 'error',
     RECOVERY_INTERVAL_MS: '0',
     ...env,
