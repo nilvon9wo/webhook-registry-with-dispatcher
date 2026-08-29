@@ -26,23 +26,51 @@ Delivery state is queryable at `GET /deliveries`.
 ## Documentation
 
 Everything below has a fuller treatment in `docs/`. This project was specified
-and designed before implementation, so the docs are the source of truth.
+and designed before implementation, so the docs are the source of truth. The
+files are numbered in the order they were written; the groups below are the
+better reading order.
 
-| Document                                                                        | Purpose                                                   |
-| ------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| [0 - challenge](docs/0%20-%20SW%20Engineer%20task%20-%20WebhookRegistryTask.md) | The original challenge statement                          |
-| [1 - spec.md](docs/1%20-%20spec.md)                                             | Functional and non-functional requirements                |
-| [2 - plan.md](docs/2%20-%20plan.md)                                             | Implementation plan and sequence                          |
-| [3 - steering-rules.md](docs/3%20-%20steering-rules.md)                         | Coding, architecture, and AI-development rules            |
-| [4 - architecture.md](docs/4%20-%20architecture.md)                             | Architecture and the major technical decisions            |
-| [5 - testing.md](docs/5%20-%20testing.md)                                       | Testing strategy, the Arrange/Act/Assert standard         |
-| [6 - prompts.md](docs/6%20-%20prompts.md)                                       | The AI development prompts / workflow                     |
-| [7 - troubleshooting.md](docs/7%20-%20troubleshooting.md)                       | Expected-failure diagnosis guidance                       |
-| [8 - setup.md](docs/8%20-%20setup.md)                                           | Dev environment, tooling, AWS setup                       |
-| [9 - decisions.md](docs/9%20-%20decisions.md)                                   | Reconciliation log + every implementation decision        |
-| [10 - security.md](docs/10%20-%20security.md)                                   | Security review — what is mitigated vs documented         |
-| [11 - logging.md](docs/11%20-%20logging.md)                                     | Structured-logging conventions + field dictionary         |
-| [12 - architecture-review.md](docs/12%20-%20architecture-review.md)             | Post-implementation review + resolution log + open issues |
+**Start here**
+
+| Document                                                                        | Purpose                                    |
+| ------------------------------------------------------------------------------- | ------------------------------------------ |
+| [0 - challenge](docs/0%20-%20SW%20Engineer%20task%20-%20WebhookRegistryTask.md) | The original challenge statement           |
+| [1 - spec.md](docs/1%20-%20spec.md)                                             | Functional and non-functional requirements |
+
+**Design (pre-implementation)**
+
+| Document                                                | Purpose                                           |
+| ------------------------------------------------------- | ------------------------------------------------- |
+| [4 - architecture.md](docs/4%20-%20architecture.md)     | Architecture and the major technical decisions    |
+| [3 - steering-rules.md](docs/3%20-%20steering-rules.md) | Coding, architecture, and AI-development rules    |
+| [5 - testing.md](docs/5%20-%20testing.md)               | Testing strategy, the Arrange/Act/Assert standard |
+| [8 - setup.md](docs/8%20-%20setup.md)                   | Dev environment, tooling, AWS setup               |
+
+**AI development process**
+
+| Document                                  | Purpose                                                 |
+| ----------------------------------------- | ------------------------------------------------------- |
+| [2 - plan.md](docs/2%20-%20plan.md)       | Original implementation plan (superseded by 9 as built) |
+| [6 - prompts.md](docs/6%20-%20prompts.md) | The AI development prompts / workflow                   |
+
+**Implementation record**
+
+| Document                                                            | Purpose                                                   |
+| ------------------------------------------------------------------- | --------------------------------------------------------- |
+| [9 - decisions.md](docs/9%20-%20decisions.md)                       | Reconciliation log + every implementation decision        |
+| [12 - architecture-review.md](docs/12%20-%20architecture-review.md) | Post-implementation review + resolution log + open issues |
+
+**Reference**
+
+| Document                                                      | Purpose                                           |
+| ------------------------------------------------------------- | ------------------------------------------------- |
+| [10 - security.md](docs/10%20-%20security.md)                 | Security review — what is mitigated vs documented |
+| [11 - logging.md](docs/11%20-%20logging.md)                   | Structured-logging conventions + field dictionary |
+| [13 - manual-test-plan.md](docs/13%20-%20manual-test-plan.md) | Hands-on test script — golden paths and failures  |
+| [7 - troubleshooting.md](docs/7%20-%20troubleshooting.md)     | Expected-failure diagnosis guidance               |
+
+The API also has an OpenAPI spec ([`openapi.yaml`](openapi.yaml)) served with a
+live Swagger UI at `/docs` when the server is running.
 
 ## Requirements
 

@@ -1,0 +1,387 @@
+openapi: 3.0.3
+
+info:
+  title: Webhook Registry + Dispatcher
+  version: 1.0.0
+  description: >
+    Register webhook subscriptions for event types, publish events, and have
+    them delivered asynchronously to matching subscribers. See the repository
+    README and `docs/` for the full picture.
+
+    Delivery is at-least-once. The `id` fields are stable across retries so
+    subscribers can deduplicate.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+tags:
+  - name: subscriptions
+  - name: events
+  - name: deliveries
+  - name: system
+
+paths:
+  /health:
+    get:
+      tags: [system]
+      summary: Liveness probe
+      description: Does not probe the datastore.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+
+  /openapi.yaml:
+    get:
+      tags: [system]
+      summary: This document
+      responses:
+        '200':
+          description: The OpenAPI document
+          content:
+            application/yaml: {}
+
+  /docs:
+    get:
+      tags: [system]
+      summary: Swagger UI for this API
+      responses:
+        '200':
+          description: HTML page (loads Swagger UI from a CDN; needs internet)
+          content:
+            text/html: {}
+
+  /subscriptions:
+    post:
+      tags: [subscriptions]
+      summary: Create a subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscriptionInput' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema: { type: string }
+              description: Path of the new subscription
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '413': { $ref: '#/components/responses/BodyTooLarge' }
+      callbacks:
+        webhookDelivery:
+          '{$request.body#/targetUrl}':
+            post:
+              summary: Event delivered to the subscriber
+              description: >
+                For every event whose `type` equals this subscription's
+                `eventType`, the service sends this request. A 2xx response is a
+                successful delivery; anything else is retried per the retry
+                policy (network errors, timeouts, 5xx/408/425/429) or recorded
+                as a permanent failure (other 4xx/3xx).
+              parameters:
+                - in: header
+                  name: X-Webhook-Event-Id
+                  schema: { type: string }
+                - in: header
+                  name: X-Webhook-Delivery-Id
+                  schema: { type: string }
+                - in: header
+                  name: X-Webhook-Attempt
+                  schema: { type: string }
+              requestBody:
+                content:
+                  application/json:
+                    schema: { $ref: '#/components/schemas/WebhookDelivery' }
+              responses:
+                '2XX':
+                  description: Delivery acknowledged
+    get:
+      tags: [subscriptions]
+      summary: List subscriptions
+      description: No pagination — the whole result set is returned.
+      parameters:
+        - in: query
+          name: eventType
+          schema: { type: string }
+          description: Narrow to one event type
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Subscription' }
+
+  /subscriptions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SubscriptionId'
+    get:
+      tags: [subscriptions]
+      summary: Get a subscription
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [subscriptions]
+      summary: Replace a subscription
+      description: Full replace. The id is server-generated, so there is no upsert.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubscriptionInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [subscriptions]
+      summary: Delete a subscription
+      description: >
+        Prevents future deliveries. Historical delivery records are not
+        touched.
+      responses:
+        '204': { description: Deleted }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /events:
+    post:
+      tags: [events]
+      summary: Publish an event
+      description: >
+        Validates, assigns an id and timestamp, persists the event, then
+        initiates asynchronous dispatch and returns immediately. The response
+        does not wait for any subscriber.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '202':
+          description: Accepted — persisted and queued for dispatch
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '413': { $ref: '#/components/responses/BodyTooLarge' }
+
+  /deliveries:
+    get:
+      tags: [deliveries]
+      summary: List delivery records
+      description: >
+        Filters combine with AND. No pagination — the whole result set is
+        returned.
+      parameters:
+        - in: query
+          name: eventId
+          schema: { type: string }
+        - in: query
+          name: subscriptionId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/DeliveryStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Delivery' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /deliveries/{id}:
+    get:
+      tags: [deliveries]
+      summary: Get a delivery record
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+          example: del_1a2b3c
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Delivery' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  parameters:
+    SubscriptionId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+      example: sub_1a2b3c
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ValidationError:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            {
+              error:
+                { message: 'Validation failed', details: ['targetUrl must use the https scheme'] },
+            }
+    BodyTooLarge:
+      description: Request body exceeded MAX_REQUEST_BODY_BYTES
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    SubscriptionInput:
+      type: object
+      required: [eventType, targetUrl]
+      properties:
+        eventType:
+          type: string
+          description: Dot/underscore/hyphen-separated alphanumeric segments, ≤ 100 chars.
+          example: order.created
+        targetUrl:
+          type: string
+          format: uri
+          description: >
+            Absolute https URL (http allowed only when ALLOW_INSECURE_TARGET_URLS=true).
+            No embedded credentials. Rejected if it resolves to a
+            loopback/private/link-local/metadata address (SSRF_GUARD_ENABLED).
+          example: https://customer.example.com/webhooks/orders
+
+    Subscription:
+      allOf:
+        - $ref: '#/components/schemas/SubscriptionInput'
+        - type: object
+          required: [id, createdAt, updatedAt]
+          properties:
+            id: { type: string, example: sub_1a2b3c }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    EventInput:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          example: order.created
+        data:
+          type: object
+          additionalProperties: true
+          default: {}
+          example: { orderId: '12345' }
+
+    Event:
+      type: object
+      required: [id, type, data, createdAt]
+      properties:
+        id: { type: string, example: evt_1a2b3c }
+        type: { type: string, example: order.created }
+        data:
+          type: object
+          additionalProperties: true
+        createdAt: { type: string, format: date-time }
+
+    WebhookDelivery:
+      type: object
+      description: The JSON body POSTed to a subscriber.
+      required: [id, type, timestamp, data]
+      properties:
+        id: { type: string, example: evt_1a2b3c }
+        type: { type: string, example: order.created }
+        timestamp: { type: string, format: date-time }
+        data:
+          type: object
+          additionalProperties: true
+
+    DeliveryStatus:
+      type: string
+      enum: [pending, delivering, delivered, failed]
+
+    Delivery:
+      type: object
+      required: [id, eventId, subscriptionId, targetUrl, status, attempts, createdAt, updatedAt]
+      properties:
+        id: { type: string, example: del_1a2b3c }
+        eventId: { type: string, example: evt_1a2b3c }
+        subscriptionId: { type: string, example: sub_1a2b3c }
+        targetUrl:
+          type: string
+          description: Snapshot of the subscription's target URL at creation time.
+        status: { $ref: '#/components/schemas/DeliveryStatus' }
+        attempts:
+          type: integer
+          description: Number of attempts started.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        nextAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the next attempt becomes eligible; null while delivering or terminal.
+        lastAttemptAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastStatusCode:
+          type: integer
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message]
+          properties:
+            message: { type: string }
+            details:
+              type: array
+              items: { type: string }
+              description: Present for validation errors.

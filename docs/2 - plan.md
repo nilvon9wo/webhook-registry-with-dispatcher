@@ -1,5 +1,10 @@
 # Implementation Plan
 
+> **Status:** this is the *original* pre-implementation plan. The sequence that
+> was actually followed, and every decision taken along the way, is recorded in
+> [`9 - decisions.md`](9%20-%20decisions.md). Read this for the intended shape;
+> read doc 9 for what was built.
+
 ## Goal
 
 Build a small, production-minded TypeScript webhook registry and dispatcher within the stated target of less than four hours.

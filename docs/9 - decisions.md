@@ -199,9 +199,57 @@ It is a living document, updated as implementation proceeds.
   timing via `performance.now()` (S10); backoff changed to **equal jitter** so a
   retry never fires near-instantly (S11); dead `HttpError` removed (S6).
 
-## 4. Explicitly out of scope for the four-hour build
+- **Documentation review + manual-testing tooling (prompt 21 follow-up):**
+  - **API console:** added a hand-written `openapi.yaml` (OpenAPI 3.0.3, the
+    outbound webhook documented as an OpenAPI `callback`) served at
+    `GET /openapi.yaml`, with Swagger UI at `GET /docs` (loads the UI bundle from
+    a CDN; the spec itself is served locally). This makes the API testable
+    without Postman/curl. Not generated from code — kept in sync by hand and by
+    an integration test that asserts `/docs` and `/openapi.yaml` respond.
+    `HandlerResult` gained a `rawBody` field for non-JSON responses.
+  - **Local subscriber:** `npm run inbox` (`scripts/webhook-inbox.ts`) — a
+    self-contained `node:http` webhook inbox with a live HTML page, no
+    dependencies beyond Node. Query params make it misbehave (`?status=500`,
+    `?status=500,500,200` sequences, `?delay=ms`) to exercise retries. Bundled so
+    there is a zero-setup option; `docs/13` also documents
+    [webhook.site](https://webhook.site) as the external alternative (used when
+    the SSRF guard is on and loopback is blocked).
+  - **Manual test plan:** `docs/13 - manual-test-plan.md` — a step-by-step
+    script (start the server locally, every golden-path scenario, every
+    critical-failure scenario from the challenge, retry + crash-recovery
+    scenarios, a pass/fail results log). The automated suite already covers all
+    of it; this is for hands-on confidence and demos.
+  - **Docs folder stays flat and keeps its numbering.** Considered subdividing
+    `docs/` by concern and renumbering into a more optimal reading order. Not
+    done: the numbers are referenced from ~30 cross-links across the README and
+    the docs themselves, and renumbering is roughly an hour of careful
+    find-and-replace surgery for no functional benefit — this is a documentation
+    ergonomics question, **not an architectural one**. Instead: the README doc
+    table now groups the files under reading-order headings (Start here / Design
+    / AI process / Implementation record / Reference), and `docs/2` carries a
+    banner pointing at `docs/9` as the as-built record.
+
+## 4. Pre-packaging checklist (prompt 22)
+
+Run immediately before packaging, in order:
+
+1. `RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge npm run test:all` →
+   all green, throwaway tables torn down (`aws dynamodb list-tables` shows no
+   orphans).
+2. `npm run check` (format:check + lint + typecheck + test:all).
+3. Complete the manual test plan (`docs/13`); fix or document anything
+   unexpected.
+4. **Export this AI conversation to `docs/ai-conversation.md`** — the challenge
+   asks for the conversation to be provided. Render the session transcript
+   (`~/.claude/projects/E--projects-TypeScript-Genesys-Coding-Challenge/<session>.jsonl`)
+   to Markdown: user and assistant text verbatim, tool calls collapsed to
+   one-liners. Do this **last** so it captures the whole session.
+5. Confirm `.env` is not staged; only `.env.example` is tracked.
+
+## 5. Explicitly out of scope for the four-hour build
 
 SQS / durable queue, multi-instance coordination, full SSRF protection
 (DNS-rebinding-safe resolution), authentication, real AWS deployment,
-single-table DynamoDB design, OpenAPI generation, metrics/tracing backends,
-dead-letter queues, rate limiting, response pagination.
+single-table DynamoDB design, *code-generated* OpenAPI (a hand-written spec is
+included), metrics/tracing backends, dead-letter queues, rate limiting, response
+pagination.

@@ -132,6 +132,16 @@ async function readBody(request: http.IncomingMessage, maxBytes: number): Promis
 
 function writeResult(response: http.ServerResponse, result: HandlerResult): void {
   const headers: Record<string, string> = { ...result.headers };
+
+  if (result.rawBody !== undefined) {
+    if (headers['Content-Type'] === undefined) {
+      headers['Content-Type'] = 'text/plain; charset=utf-8';
+    }
+    response.writeHead(result.status, headers);
+    response.end(result.rawBody);
+    return;
+  }
+
   const hasBody = result.body !== undefined;
   if (hasBody) {
     headers['Content-Type'] = 'application/json';

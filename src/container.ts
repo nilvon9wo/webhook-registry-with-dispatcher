@@ -41,9 +41,20 @@ import { registerHealthRoute } from './http/handlers/health.js';
 import { registerEventRoutes } from './http/handlers/events.js';
 import { registerSubscriptionRoutes } from './http/handlers/subscriptions.js';
 import { registerDeliveryRoutes } from './http/handlers/deliveries.js';
+import { registerDocsRoutes } from './http/handlers/docs.js';
 import { createHttpServer } from './http/server.js';
 import { Router } from './http/router.js';
 import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+function readOpenApiSpec(): string | undefined {
+  try {
+    return fs.readFileSync(path.join(process.cwd(), 'openapi.yaml'), 'utf8');
+  } catch {
+    return undefined;
+  }
+}
 
 export interface Repositories {
   readonly subscriptions: SubscriptionRepository;
@@ -182,6 +193,7 @@ export function buildApplication(
   registerSubscriptionRoutes(router, subscriptionService);
   registerEventRoutes(router, eventService);
   registerDeliveryRoutes(router, deliveryService);
+  registerDocsRoutes(router, readOpenApiSpec());
 
   const httpServer = createHttpServer({
     router,

@@ -18,7 +18,10 @@ export interface RequestContext {
 
 export interface HandlerResult {
   readonly status: number;
+  /** JSON-serialised into the response with `Content-Type: application/json`. */
   readonly body?: unknown;
+  /** A pre-formatted response body (e.g. HTML, YAML); set `Content-Type` in `headers`. */
+  readonly rawBody?: string;
   readonly headers?: Readonly<Record<string, string>>;
 }
 
