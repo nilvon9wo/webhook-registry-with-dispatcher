@@ -15,6 +15,7 @@ import type {
 import { SubscriptionService } from './application/subscription-service.js';
 import { EventService, type EventDispatcher } from './application/event-service.js';
 import { Dispatcher } from './application/dispatcher.js';
+import { realScheduler, type Scheduler } from './application/scheduler.js';
 import { systemClock, type Clock } from './application/clock.js';
 import { randomIdGenerator } from './domain/ids.js';
 import { createHttpWebhookClient, type WebhookClient } from './infrastructure/webhook-client.js';
@@ -91,6 +92,8 @@ export interface BuildApplicationOptions {
   readonly eventDispatcher?: EventDispatcher;
   /** Replaces the real HTTP webhook client (tests inject a fake). */
   readonly webhookClient?: WebhookClient;
+  /** Replaces the real (setTimeout) retry scheduler (tests inject a manual one). */
+  readonly scheduler?: Scheduler;
 }
 
 export function buildApplication(
@@ -114,10 +117,18 @@ export function buildApplication(
       subscriptions: repositories.subscriptions,
       deliveries: repositories.deliveries,
       webhookClient: options.webhookClient ?? createHttpWebhookClient(),
+      scheduler: options.scheduler ?? realScheduler,
       clock,
       ids: randomIdGenerator,
       logger,
-      config: { webhookTimeoutMs: config.delivery.webhookTimeoutMs },
+      config: {
+        webhookTimeoutMs: config.delivery.webhookTimeoutMs,
+        retryPolicy: {
+          maxAttempts: config.delivery.maxAttempts,
+          baseDelayMs: config.delivery.retryBaseDelayMs,
+          maxDelayMs: config.delivery.retryMaxDelayMs,
+        },
+      },
     });
 
   const eventService = new EventService({

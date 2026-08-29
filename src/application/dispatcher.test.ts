@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { aSubscription } from '../../tests/support/factories.js';
+import { drainScheduler, ManualScheduler } from '../../tests/support/manual-scheduler.js';
 import { isTerminal } from '../domain/delivery.js';
 import { createEvent, type WebhookEvent } from '../domain/event.js';
 import type { IdGenerator, IdKind } from '../domain/ids.js';
-import type { AttemptOutcome } from '../domain/retry-policy.js';
+import type { AttemptOutcome, RetryPolicy } from '../domain/retry-policy.js';
 import {
   InMemoryDeliveryRepository,
   InMemorySubscriptionRepository,
@@ -12,6 +13,9 @@ import { silentLogger } from '../infrastructure/logger.js';
 import type { WebhookClient, WebhookRequest } from '../infrastructure/webhook-client.js';
 import { fixedClock } from './clock.js';
 import { Dispatcher } from './dispatcher.js';
+
+/** Default: a single attempt (no retries), so outcome-class tests stay direct. */
+const NO_RETRY: RetryPolicy = { maxAttempts: 1, baseDelayMs: 500, maxDelayMs: 30_000 };
 
 const CLOCK = fixedClock(new Date('2026-08-28T10:15:00.000Z'));
 
@@ -43,22 +47,27 @@ interface Harness {
   readonly subscriptions: InMemorySubscriptionRepository;
   readonly deliveries: InMemoryDeliveryRepository;
   readonly webhookClient: FakeWebhookClient;
+  readonly scheduler: ManualScheduler;
 }
 
-function newHarness(): Harness {
+function newHarness(retryPolicy: RetryPolicy = NO_RETRY): Harness {
   const subscriptions = new InMemorySubscriptionRepository();
   const deliveries = new InMemoryDeliveryRepository();
   const webhookClient = new FakeWebhookClient();
+  const scheduler = new ManualScheduler();
   const dispatcher = new Dispatcher({
     subscriptions,
     deliveries,
     webhookClient,
+    scheduler,
     clock: CLOCK,
     ids: sequentialIds(),
     logger: silentLogger,
-    config: { webhookTimeoutMs: 5000 },
+    config: { webhookTimeoutMs: 5000, retryPolicy },
+    // Full jitter (random() === 1) makes the backoff delay deterministic: the cap.
+    random: () => 1,
   });
-  return { dispatcher, subscriptions, deliveries, webhookClient };
+  return { dispatcher, subscriptions, deliveries, webhookClient, scheduler };
 }
 
 const EVENT: WebhookEvent = createEvent(
@@ -124,7 +133,7 @@ describe('Dispatcher.dispatchEvent', () => {
     { outcome: { kind: 'timeout' }, label: 'timeout' },
     { outcome: { kind: 'network-error', message: 'ECONNREFUSED' }, label: 'network error' },
   ] as { outcome: AttemptOutcome; label: string }[])(
-    'records a failed delivery on a $label (single-attempt step)',
+    'records a failed delivery on a $label when no retry is configured',
     async ({ outcome }) => {
       // Arrange
       const { dispatcher, subscriptions, deliveries, webhookClient } = newHarness();
@@ -250,5 +259,162 @@ describe('Dispatcher.dispatch (fire-and-forget)', () => {
 
     // Assert
     await expect(settle).resolves.toBeUndefined();
+  });
+});
+
+const RETRY_5: RetryPolicy = { maxAttempts: 5, baseDelayMs: 500, maxDelayMs: 30_000 };
+
+describe('Dispatcher retry behaviour', () => {
+  async function withOneSubscription(retryPolicy: RetryPolicy): Promise<Harness> {
+    const harness = newHarness(retryPolicy);
+    await harness.subscriptions.save(aSubscription({ id: 'sub_a', eventType: 'order.created' }));
+    return harness;
+  }
+
+  it('schedules a retry (does not fail) on a retryable outcome with attempts remaining', async () => {
+    // Arrange
+    const { dispatcher, deliveries, scheduler, webhookClient } = await withOneSubscription(RETRY_5);
+    webhookClient.responder = () => ({ kind: 'http-error', statusCode: 503 });
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+
+    // Assert
+    const [delivery] = await deliveries.list();
+    expect(delivery?.status).toBe('pending');
+    expect(delivery?.attempts).toBe(1);
+    expect(delivery?.lastStatusCode).toBe(503);
+    expect(delivery?.nextAttemptAt).not.toBeNull();
+    expect(scheduler.pendingCount).toBe(1);
+    expect(scheduler.pendingDelays).toEqual([500]);
+  });
+
+  it('does not retry a permanent (4xx) failure', async () => {
+    // Arrange
+    const { dispatcher, deliveries, scheduler, webhookClient } = await withOneSubscription(RETRY_5);
+    webhookClient.responder = () => ({ kind: 'http-error', statusCode: 400 });
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+
+    // Assert
+    expect((await deliveries.list())[0]?.status).toBe('failed');
+    expect(scheduler.pendingCount).toBe(0);
+  });
+
+  it('succeeds on a later attempt: 503, 503, then 200 → delivered after 3 attempts', async () => {
+    // Arrange
+    const { dispatcher, deliveries, scheduler, webhookClient } = await withOneSubscription(RETRY_5);
+    const statuses = [503, 503, 200];
+    let call = 0;
+    webhookClient.responder = () => {
+      const status = statuses[call] ?? 200;
+      call += 1;
+      return status < 300
+        ? { kind: 'success', statusCode: status }
+        : { kind: 'http-error', statusCode: status };
+    };
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+    await drainScheduler(scheduler, dispatcher);
+
+    // Assert
+    const [delivery] = await deliveries.list();
+    expect(delivery?.status).toBe('delivered');
+    expect(delivery?.attempts).toBe(3);
+    expect(delivery?.lastStatusCode).toBe(200);
+    expect(delivery?.lastError).toBeNull();
+  });
+
+  it('enforces the maximum attempt count and then records a permanent failure', async () => {
+    // Arrange
+    const { dispatcher, deliveries, scheduler, webhookClient } = await withOneSubscription(RETRY_5);
+    webhookClient.responder = () => ({ kind: 'timeout' });
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+    await drainScheduler(scheduler, dispatcher);
+
+    // Assert
+    const [delivery] = await deliveries.list();
+    expect(delivery?.status).toBe('failed');
+    expect(delivery?.attempts).toBe(5);
+    expect(delivery?.lastError).toBe('request timed out');
+    expect(webhookClient.requests).toHaveLength(5);
+    expect(scheduler.pendingCount).toBe(0);
+  });
+
+  it('grows the backoff exponentially, capped at maxDelayMs', async () => {
+    // Arrange
+    const policy: RetryPolicy = { maxAttempts: 6, baseDelayMs: 500, maxDelayMs: 3000 };
+    const { dispatcher, scheduler, webhookClient } = await withOneSubscription(policy);
+    webhookClient.responder = () => ({ kind: 'network-error', message: 'ECONNRESET' });
+    const observedDelays: number[] = [];
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+    for (let round = 0; round < 5 && scheduler.pendingCount > 0; round += 1) {
+      observedDelays.push(...scheduler.pendingDelays);
+      scheduler.runPending();
+      await dispatcher.whenIdle();
+    }
+
+    // Assert — 500, 1000, 2000, then capped at 3000, 3000
+    expect(observedDelays).toEqual([500, 1000, 2000, 3000, 3000]);
+  });
+
+  it('isolates retries: a permanently-failing subscriber does not disturb a healthy one', async () => {
+    // Arrange
+    const harness = newHarness(RETRY_5);
+    const { dispatcher, deliveries, scheduler, webhookClient } = harness;
+    await harness.subscriptions.save(
+      aSubscription({
+        id: 'sub_ok',
+        eventType: 'order.created',
+        targetUrl: 'https://ok.example/h',
+      }),
+    );
+    await harness.subscriptions.save(
+      aSubscription({
+        id: 'sub_bad',
+        eventType: 'order.created',
+        targetUrl: 'https://bad.example/h',
+      }),
+    );
+    webhookClient.responder = (request) =>
+      request.url === 'https://bad.example/h'
+        ? { kind: 'http-error', statusCode: 503 }
+        : { kind: 'success', statusCode: 200 };
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+    await drainScheduler(scheduler, dispatcher);
+
+    // Assert
+    const statusOf = async (subscriptionId: string): Promise<string | undefined> =>
+      (await deliveries.list({ subscriptionId }))[0]?.status;
+    expect(await statusOf('sub_ok')).toBe('delivered');
+    expect(await statusOf('sub_bad')).toBe('failed');
+    expect((await deliveries.list({ subscriptionId: 'sub_bad' }))[0]?.attempts).toBe(5);
+  });
+
+  it('cancelScheduledRetries stops pending retries but leaves the delivery pending for recovery', async () => {
+    // Arrange
+    const { dispatcher, deliveries, scheduler, webhookClient } = await withOneSubscription(RETRY_5);
+    webhookClient.responder = () => ({ kind: 'http-error', statusCode: 503 });
+    await dispatcher.dispatchEvent(EVENT);
+
+    // Act
+    dispatcher.cancelScheduledRetries();
+    scheduler.runPending();
+    await dispatcher.whenIdle();
+
+    // Assert
+    expect(dispatcher.scheduledRetryCount).toBe(0);
+    const [delivery] = await deliveries.list();
+    expect(delivery?.status).toBe('pending');
+    expect(delivery?.nextAttemptAt).not.toBeNull();
+    expect(webhookClient.requests).toHaveLength(1);
   });
 });

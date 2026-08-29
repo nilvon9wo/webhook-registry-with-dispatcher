@@ -85,9 +85,19 @@ It is a living document, updated as implementation proceeds.
   delivery tasks for failure isolation. `dispatch()` is fire-and-forget and
   swallows/logs background errors; `whenIdle()` lets shutdown and tests await
   in-flight work. `dispatchEvent()` is also public so recovery can re-drive an
-  event. This step does a **single attempt** per delivery (`delivered` on 2xx,
-  `failed` otherwise); bounded retry is layered on in prompt 11 — the outcome
-  branch is already shaped for it via `classifyOutcome`.
+  event.
+- **Retry (prompt 11):** a `retryable` outcome with attempts remaining →
+  `scheduleRetry` (persisted `pending` + `nextAttemptAt`) + a deferred re-attempt
+  through an injected `Scheduler` seam (`setTimeout` in prod, a manual scheduler
+  in tests). `permanent`, or `retryable` past `maxAttempts` → `failed`. Backoff
+  is capped exponential with full jitter; jitter source is injectable
+  (`random`). All bounds from config (`MAX_DELIVERY_ATTEMPTS`,
+  `RETRY_BASE_DELAY_MS`, `RETRY_MAX_DELAY_MS`). The re-attempt reloads the
+  delivery and no-ops if it is no longer `pending` (race with recovery).
+  `cancelScheduledRetries()` (for shutdown) drops in-flight backoff timers,
+  leaving the deliveries `pending` for recovery; real scheduler timers are
+  `unref()`ed so a pending retry never blocks process exit. Wiring the shutdown
+  call into `index.ts` is left for prompt 19.
 - **Webhook client:** `fetch` + `AbortController` timeout; never throws (maps to
   an `AttemptOutcome`); `redirect: 'manual'` so a user-supplied target cannot
   redirect the server to an internal address (3xx → permanent failure); response
