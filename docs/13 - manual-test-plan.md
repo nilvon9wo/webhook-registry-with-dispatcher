@@ -277,6 +277,12 @@ decoupled from subscribing, so zero matches is not an error (see `docs/9` →
 **and a yellow `dispatch.no_subscribers` warning** — the signal an operator would
 alert on to catch a mis-typed event type.
 
+`items: []` here means **no subscriber matched**. It is distinct from "subscribers
+matched but every delivery failed" — that case returns delivery **records** with
+`status: "failed"` (see R2). The list envelope is `{ "items": [...] }` for both
+`/deliveries` and `/subscriptions`; see `docs/9` → "List responses use a
+`{ items }` envelope".
+
 ### G6 — event with no `data`
 
 ```bash
