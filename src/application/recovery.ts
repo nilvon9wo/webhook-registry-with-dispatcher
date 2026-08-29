@@ -16,7 +16,7 @@
  */
 
 import { reclaimStuck } from '../domain/delivery.js';
-import type { Logger } from '../infrastructure/logger.js';
+import { errorFields, type Logger } from '../infrastructure/logger.js';
 import type { Clock } from './clock.js';
 import type { DeliveryRepository } from './ports.js';
 
@@ -64,9 +64,7 @@ export class RecoveryService {
     });
     this.timer = setInterval(() => {
       void this.runOnce().catch((error: unknown) => {
-        this.deps.logger.error('recovery sweep failed', {
-          error: error instanceof Error ? error.message : String(error),
-        });
+        this.deps.logger.error('recovery sweep failed', errorFields(error));
       });
     }, intervalMs);
     this.timer.unref();
@@ -110,6 +108,12 @@ export class RecoveryService {
     );
     for (const delivery of stuck) {
       await this.deps.deliveries.save(reclaimStuck(delivery, this.deps.clock.now()));
+      this.deps.logger.debug('reclaimed stuck delivery', {
+        deliveryId: delivery.id,
+        eventId: delivery.eventId,
+        subscriptionId: delivery.subscriptionId,
+        lastAttemptAt: delivery.lastAttemptAt,
+      });
     }
     return stuck.length;
   }

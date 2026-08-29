@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LogLevel } from '../config.js';
-import { createLogger, type Logger } from './logger.js';
+import { createLogger, errorFields, type Logger } from './logger.js';
 
 interface Captured {
   readonly level: LogLevel;
@@ -76,5 +76,30 @@ describe('createLogger', () => {
 
     // Assert
     expect(lines.map((entry) => entry.level)).toEqual(['info', 'error']);
+  });
+});
+
+describe('errorFields', () => {
+  it('extracts message and stack from an Error', () => {
+    // Arrange
+    const error = new Error('boom');
+
+    // Act
+    const fields = errorFields(error);
+
+    // Assert
+    expect(fields.error).toBe('boom');
+    expect(fields.stack).toContain('Error: boom');
+  });
+
+  it('stringifies a non-Error and omits stack', () => {
+    // Arrange
+    const thrown = 'just a string';
+
+    // Act
+    const fields = errorFields(thrown);
+
+    // Assert
+    expect(fields).toEqual({ error: 'just a string' });
   });
 });

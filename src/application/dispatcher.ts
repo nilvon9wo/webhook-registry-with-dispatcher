@@ -37,7 +37,7 @@ import {
   type RetryPolicy,
 } from '../domain/retry-policy.js';
 import type { Subscription } from '../domain/subscription.js';
-import type { Logger } from '../infrastructure/logger.js';
+import { errorFields, type Logger } from '../infrastructure/logger.js';
 import { SsrfBlockedError, type TargetUrlGuard } from '../infrastructure/ssrf-guard.js';
 import type { WebhookClient } from '../infrastructure/webhook-client.js';
 import type { Clock } from './clock.js';
@@ -84,7 +84,7 @@ export class Dispatcher implements EventDispatcher {
       this.dispatchEvent(event).catch((error: unknown) => {
         this.deps.logger.error('event dispatch failed', {
           eventId: event.id,
-          error: errorText(error),
+          ...errorFields(error),
         });
       }),
     );
@@ -149,7 +149,18 @@ export class Dispatcher implements EventDispatcher {
       now: this.deps.clock.now(),
     });
     await this.deps.deliveries.save(delivery);
+    this.deliveryLogger(delivery, event.id).debug('delivery record created');
     await this.attemptDelivery(delivery, event);
+  }
+
+  /** A logger scoped to one delivery: carries the four correlation ids + target host. */
+  private deliveryLogger(delivery: Delivery, eventId: string): Logger {
+    return this.deps.logger.child({
+      eventId,
+      subscriptionId: delivery.subscriptionId,
+      deliveryId: delivery.id,
+      targetHost: hostnameOf(delivery.targetUrl),
+    });
   }
 
   /** One delivery attempt: mark delivering, POST, then deliver / retry / fail. */
@@ -157,12 +168,7 @@ export class Dispatcher implements EventDispatcher {
     const attempting = beginAttempt(delivery, this.deps.clock.now());
     await this.deps.deliveries.save(attempting);
 
-    const log = this.deps.logger.child({
-      eventId: event.id,
-      subscriptionId: attempting.subscriptionId,
-      deliveryId: attempting.id,
-      attempt: attempting.attempts,
-    });
+    const log = this.deliveryLogger(attempting, event.id).child({ attempt: attempting.attempts });
 
     // Re-check the target at delivery time: the subscription may have been
     // registered when the host resolved to a public address and now resolve to a
@@ -220,6 +226,7 @@ export class Dispatcher implements EventDispatcher {
     await this.deps.deliveries.save(failed);
     log.warn('delivery failed permanently', {
       classification,
+      reason: classification === 'permanent' ? 'non-retryable response' : 'retry budget exhausted',
       statusCode: failed.lastStatusCode,
       error: failed.lastError,
       attempts: failed.attempts,
@@ -261,7 +268,7 @@ export class Dispatcher implements EventDispatcher {
       this.scheduledRetries.delete(cancel);
       this.track(
         this.resumeDelivery(retrying.id).catch((error: unknown) => {
-          log.error('retry attempt failed to run', { error: errorText(error) });
+          log.error('retry attempt failed to run', errorFields(error));
         }),
       );
     }, delayMs);
@@ -279,11 +286,16 @@ export class Dispatcher implements EventDispatcher {
     if (delivery === undefined || delivery.status !== 'pending') {
       return;
     }
+    const log = this.deliveryLogger(delivery, delivery.eventId);
 
     if (!hasAttemptsRemaining(delivery.attempts, this.deps.config.retryPolicy)) {
       await this.deps.deliveries.save(
         abandonDelivery(delivery, 'retry limit reached', this.deps.clock.now()),
       );
+      log.warn('delivery abandoned', {
+        reason: 'retry limit reached',
+        attempts: delivery.attempts,
+      });
       return;
     }
 
@@ -292,6 +304,7 @@ export class Dispatcher implements EventDispatcher {
       await this.deps.deliveries.save(
         abandonDelivery(delivery, 'source event no longer available', this.deps.clock.now()),
       );
+      log.warn('delivery abandoned', { reason: 'source event no longer available' });
       return;
     }
 
@@ -320,6 +333,11 @@ function describeOutcome(outcome: AttemptOutcome): string {
   }
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/** Host portion of a URL for logging (never the full URL, which may carry a path secret). */
+function hostnameOf(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname;
+  } catch {
+    return 'invalid-url';
+  }
 }

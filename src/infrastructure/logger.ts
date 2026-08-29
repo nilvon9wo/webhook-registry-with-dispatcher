@@ -65,6 +65,16 @@ export function createLogger(options: LoggerOptions): Logger {
   return build({});
 }
 
+/** Consistent `{ error, stack }` fields for logging a caught value. */
+export function errorFields(error: unknown): { error: string; stack?: string } {
+  if (error instanceof Error) {
+    return error.stack !== undefined
+      ? { error: error.message, stack: error.stack }
+      : { error: error.message };
+  }
+  return { error: String(error) };
+}
+
 /** A logger that discards everything — for tests that do not assert on logs. */
 export const silentLogger: Logger = {
   debug: () => {},

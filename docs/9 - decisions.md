@@ -141,6 +141,19 @@ It is a living document, updated as implementation proceeds.
   states — `pending | delivering | delivered | failed` as the spec suggests.
 - **AuthN/AuthZ:** out of scope; documented as an assumption.
 
+- **Observability review (prompt 17):** structured JSON logs; every
+  delivery-scoped line carries `eventId` + `subscriptionId` + `deliveryId` +
+  `attempt` (+ `targetHost`, host only) via a `child` logger. Outcome logs
+  include `classification`, `statusCode`, `elapsedMs`, and (on a retry)
+  `backoffMs` / `nextAttemptAt`; a permanent failure logs whether it was a
+  non-retryable response or an exhausted budget. Recovery logs each reclaim
+  (debug) and every abandon (warn) with correlation ids. `errorFields(err)`
+  gives consistent `{ error, stack }`. No log line contains the event payload,
+  a request/response body, a full target URL, or a credential (asserted by
+  test). `index.ts` logs `unhandledRejection` / `uncaughtException`. A
+  per-HTTP-request id is noted as a future addition (`eventId` is the primary
+  correlation key today).
+
 - **Configuration review (prompt 15):** every operational setting in the spec §12
   list is an env var with a safe default and aggregated validation
   (`config.ts` + `.env.example`, both cross-checked in a test). No secrets in

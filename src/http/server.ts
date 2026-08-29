@@ -7,7 +7,7 @@
  */
 
 import * as http from 'node:http';
-import type { Logger } from '../infrastructure/logger.js';
+import { errorFields, type Logger } from '../infrastructure/logger.js';
 import { errorResponse, toErrorResponse } from './problem.js';
 import type { HandlerResult, RequestContext, Router } from './router.js';
 
@@ -39,12 +39,7 @@ async function handleRequest(
   } catch (error) {
     const mapped = toErrorResponse(error);
     if (mapped.serverFault) {
-      deps.logger.error('request handler threw', {
-        method,
-        path,
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-      });
+      deps.logger.error('request handler threw', { method, path, ...errorFields(error) });
     }
     result = mapped.response;
   }

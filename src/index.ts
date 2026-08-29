@@ -6,6 +6,7 @@
 import { buildApplication } from './container.js';
 import type { AppConfig } from './config.js';
 import { ConfigError, configSummary, configWarnings, loadConfig } from './config.js';
+import { errorFields } from './infrastructure/logger.js';
 
 function loadConfigOrExit(): AppConfig | undefined {
   try {
@@ -32,6 +33,13 @@ function main(): void {
   for (const warning of configWarnings(config)) {
     app.logger.warn('configuration warning', { warning });
   }
+
+  process.on('unhandledRejection', (reason) => {
+    app.logger.error('unhandled promise rejection', errorFields(reason));
+  });
+  process.on('uncaughtException', (error) => {
+    app.logger.error('uncaught exception', errorFields(error));
+  });
 
   app.httpServer.listen(config.port, () => {
     app.logger.info('server listening', { port: config.port, persistence: config.persistence });
