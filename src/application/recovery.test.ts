@@ -9,7 +9,8 @@ import {
   InMemoryEventRepository,
   InMemorySubscriptionRepository,
 } from '../infrastructure/memory/in-memory-repositories.js';
-import { silentLogger } from './logging.js';
+import { createCapturingLogger } from '../../tests/support/capturing-logger.js';
+import { silentLogger, type Logger } from './logging.js';
 import { allowAllTargetUrlGuard } from './target-url-guard.js';
 import type { WebhookClient, WebhookRequest } from './webhook-client.js';
 import { fixedClock } from './clock.js';
@@ -48,7 +49,7 @@ interface Harness {
   readonly webhookClient: FakeWebhookClient;
 }
 
-function newHarness(): Harness {
+function newHarness(logger: Logger = silentLogger): Harness {
   const subscriptions = new InMemorySubscriptionRepository();
   const events = new InMemoryEventRepository();
   const deliveries = new InMemoryDeliveryRepository();
@@ -70,7 +71,7 @@ function newHarness(): Harness {
     deliveries,
     resumer: dispatcher,
     clock: CLOCK,
-    logger: silentLogger,
+    logger,
     config: { stuckDeliveringThresholdMs: STUCK_THRESHOLD_MS, batchLimit: 100 },
   });
   return { recovery, subscriptions, events, deliveries, webhookClient };
@@ -279,6 +280,79 @@ describe('RecoveryService.runOnce', () => {
     expect(second).toEqual({ reclaimed: 0, resumed: 0 });
     release();
     expect(await first).toEqual({ reclaimed: 0, resumed: 0 });
+  });
+});
+
+describe('RecoveryService.runOnce — sweep logging', () => {
+  const sweepLine = (logger: ReturnType<typeof createCapturingLogger>, message: string) =>
+    logger.lines.find((line) => line.message === message);
+
+  it('logs recovery.sweep.completed at debug when the sweep does nothing', async () => {
+    // Arrange
+    const logger = createCapturingLogger();
+    const harness = newHarness(logger);
+
+    // Act
+    await harness.recovery.runOnce();
+
+    // Assert
+    expect(sweepLine(logger, 'recovery.sweep.completed')).toMatchObject({
+      level: 'debug',
+      fields: { reclaimedCount: 0, resumedCount: 0 },
+    });
+  });
+
+  it('logs recovery.sweep.completed at info when the sweep re-drives a delivery', async () => {
+    // Arrange — a due pending delivery.
+    const logger = createCapturingLogger();
+    const harness = newHarness(logger);
+    await seedSubscriptionAndEvent(harness);
+    await harness.deliveries.save(
+      aDelivery({
+        id: 'del_1',
+        eventId: 'evt_1',
+        subscriptionId: 'sub_1',
+        status: 'pending',
+        attempts: 1,
+        nextAttemptAt: iso(-5000),
+      }),
+    );
+
+    // Act
+    await harness.recovery.runOnce();
+
+    // Assert
+    expect(sweepLine(logger, 'recovery.sweep.completed')).toMatchObject({
+      level: 'info',
+      fields: { resumedCount: 1 },
+    });
+  });
+
+  it('logs recovery.sweep.skipped when a sweep overlaps a running one', async () => {
+    // Arrange — gate the first sweep so it is still in flight for the second.
+    const logger = createCapturingLogger();
+    const harness = newHarness(logger);
+    let release = (): void => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = harness.deliveries.listStuckDelivering.bind(harness.deliveries);
+    harness.deliveries.listStuckDelivering = async (before, limit) => {
+      await gate;
+      return original(before, limit);
+    };
+    const first = harness.recovery.runOnce();
+
+    // Act
+    await harness.recovery.runOnce();
+
+    // Assert
+    expect(sweepLine(logger, 'recovery.sweep.skipped')).toMatchObject({
+      level: 'debug',
+      fields: { reason: 'previous_sweep_in_progress' },
+    });
+    release();
+    await first;
   });
 });
 

@@ -86,14 +86,21 @@ export class RecoveryService {
    */
   async runOnce(): Promise<RecoverySummary> {
     if (this.running) {
+      this.log.debug('recovery.sweep.skipped', { reason: 'previous_sweep_in_progress' });
       return { reclaimed: 0, resumed: 0 };
     }
     this.running = true;
     try {
       const reclaimedCount = await this.reclaimStuckDeliveries();
       const resumedCount = await this.resumeDueDeliveries();
+      // Every sweep logs a completion line so "ran, nothing to do" is distinct
+      // from "started but never finished". A productive sweep is `info`; a
+      // no-op is `debug` to keep a quiet system's log quiet.
+      const fields = { reclaimedCount, resumedCount };
       if (reclaimedCount > 0 || resumedCount > 0) {
-        this.log.info('recovery.sweep.completed', { reclaimedCount, resumedCount });
+        this.log.info('recovery.sweep.completed', fields);
+      } else {
+        this.log.debug('recovery.sweep.completed', fields);
       }
       return { reclaimed: reclaimedCount, resumed: resumedCount };
     } finally {
