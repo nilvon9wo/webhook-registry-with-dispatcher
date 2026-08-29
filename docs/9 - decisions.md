@@ -72,6 +72,21 @@ It is a living document, updated as implementation proceeds.
   GSI sort-key uniqueness.
 - **Idempotency:** `/events` does **not** accept client idempotency keys in v1.
   Event IDs are stable across retries. Delivery is at-least-once.
+- **Recovery (prompt 13):** a periodic sweep (`RECOVERY_INTERVAL_MS`, `0`
+  disables; `RECOVERY_BATCH_LIMIT` bounds a run), **not** the primary dispatch
+  path. Each run: (1) reclaim deliveries stuck in `delivering` past
+  `STUCK_DELIVERING_THRESHOLD_MS` back to `pending` (`reclaimStuck`); (2) re-drive
+  `pending` deliveries whose `nextAttemptAt` is due via
+  `Dispatcher.resumeDelivery`, which enforces the attempt cap and abandons
+  (`abandonDelivery`: `pending → failed`) deliveries that cannot progress —
+  budget spent, or source event gone — so recovery can never retry forever.
+  Reentrancy-guarded (a slow run skips the next tick). The `Dispatcher` now
+  depends on `EventRepository` so `resumeDelivery` can reload the payload; the
+  in-process retry timer also routes through `resumeDelivery` (single code
+  path). `start`/`stop` wired into `index.ts`. Overlap between a recovery sweep
+  and the in-process retry timer can cause an extra delivery attempt
+  (at-least-once, documented) — the `status !== 'pending'` guard narrows the
+  window.
 - **`/deliveries` API (prompt 12, bonus):** `GET /deliveries` with optional
   `?eventId=` / `?subscriptionId=` / `?status=` (AND-combined; unknown `status`
   → 400), `GET /deliveries/{id}` (404 if unknown). Read-only — delivery state is

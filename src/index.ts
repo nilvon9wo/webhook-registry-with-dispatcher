@@ -31,9 +31,11 @@ function main(): void {
   app.httpServer.listen(config.port, () => {
     app.logger.info('server listening', { port: config.port, persistence: config.persistence });
   });
+  app.recovery.start(config.recovery.intervalMs);
 
   const shutdown = (signal: string): void => {
     app.logger.info('shutting down', { signal });
+    app.recovery.stop();
     app.httpServer.close(() => process.exit(0));
     // Failsafe: do not hang forever if connections do not drain.
     setTimeout(() => process.exit(1), 10_000).unref();

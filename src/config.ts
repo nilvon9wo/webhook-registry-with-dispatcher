@@ -52,6 +52,8 @@ export interface AppConfig {
      * abandoned (crashed mid-attempt) and eligible for recovery, in ms.
      */
     readonly stuckDeliveringThresholdMs: number;
+    /** Maximum deliveries a single sweep will handle. */
+    readonly batchLimit: number;
   };
 
   readonly security: {
@@ -94,6 +96,7 @@ const DEFAULTS = {
   RETRY_MAX_DELAY_MS: 30_000,
   RECOVERY_INTERVAL_MS: 60_000,
   STUCK_DELIVERING_THRESHOLD_MS: 60_000,
+  RECOVERY_BATCH_LIMIT: 100,
   ALLOW_INSECURE_TARGET_URLS: false,
   SSRF_GUARD_ENABLED: true,
 } as const;
@@ -170,6 +173,9 @@ export function loadConfig(env: EnvRecord = process.env): AppConfig {
         problems,
         { min: 0 },
       ),
+      batchLimit: readInt(env, 'RECOVERY_BATCH_LIMIT', DEFAULTS.RECOVERY_BATCH_LIMIT, problems, {
+        min: 1,
+      }),
     },
     security: {
       allowInsecureTargetUrls: readBool(

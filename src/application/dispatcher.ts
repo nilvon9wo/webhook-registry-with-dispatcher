@@ -19,6 +19,7 @@
  */
 
 import {
+  abandonDelivery,
   beginAttempt,
   completeDelivered,
   completeFailed,
@@ -41,7 +42,7 @@ import type { WebhookClient } from '../infrastructure/webhook-client.js';
 import type { Clock } from './clock.js';
 import type { EventDispatcher } from './event-service.js';
 import { findSubscriptionsForEvent } from './matching.js';
-import type { DeliveryRepository, SubscriptionRepository } from './ports.js';
+import type { DeliveryRepository, EventRepository, SubscriptionRepository } from './ports.js';
 import type { Scheduler } from './scheduler.js';
 
 export interface DispatcherConfig {
@@ -51,6 +52,7 @@ export interface DispatcherConfig {
 
 export interface DispatcherDeps {
   readonly subscriptions: SubscriptionRepository;
+  readonly events: EventRepository;
   readonly deliveries: DeliveryRepository;
   readonly webhookClient: WebhookClient;
   readonly scheduler: Scheduler;
@@ -237,7 +239,7 @@ export class Dispatcher implements EventDispatcher {
     cancel = this.deps.scheduler.schedule(() => {
       this.scheduledRetries.delete(cancel);
       this.track(
-        this.reattemptDelivery(retrying.id, event).catch((error: unknown) => {
+        this.resumeDelivery(retrying.id).catch((error: unknown) => {
           log.error('retry attempt failed to run', { error: errorText(error) });
         }),
       );
@@ -245,13 +247,34 @@ export class Dispatcher implements EventDispatcher {
     this.scheduledRetries.add(cancel);
   }
 
-  private async reattemptDelivery(deliveryId: string, event: WebhookEvent): Promise<void> {
-    const current = await this.deps.deliveries.get(deliveryId);
-    if (current === undefined || current.status !== 'pending') {
-      // Already terminal, or reclaimed/handled elsewhere (e.g. recovery).
+  /**
+   * Resumes one `pending` delivery by its id: re-loads it, and either abandons
+   * it (retry budget spent, or the source event is gone) or runs another
+   * attempt. Used by the in-process retry timer and by recovery. A no-op if the
+   * delivery is no longer `pending` (already handled elsewhere).
+   */
+  async resumeDelivery(deliveryId: string): Promise<void> {
+    const delivery = await this.deps.deliveries.get(deliveryId);
+    if (delivery === undefined || delivery.status !== 'pending') {
       return;
     }
-    await this.attemptDelivery(current, event);
+
+    if (!hasAttemptsRemaining(delivery.attempts, this.deps.config.retryPolicy)) {
+      await this.deps.deliveries.save(
+        abandonDelivery(delivery, 'retry limit reached', this.deps.clock.now()),
+      );
+      return;
+    }
+
+    const event = await this.deps.events.get(delivery.eventId);
+    if (event === undefined) {
+      await this.deps.deliveries.save(
+        abandonDelivery(delivery, 'source event no longer available', this.deps.clock.now()),
+      );
+      return;
+    }
+
+    await this.attemptDelivery(delivery, event);
   }
 
   private track(task: Promise<void>): void {

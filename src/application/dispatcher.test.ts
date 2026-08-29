@@ -7,6 +7,7 @@ import type { IdGenerator, IdKind } from '../domain/ids.js';
 import type { AttemptOutcome, RetryPolicy } from '../domain/retry-policy.js';
 import {
   InMemoryDeliveryRepository,
+  InMemoryEventRepository,
   InMemorySubscriptionRepository,
 } from '../infrastructure/memory/in-memory-repositories.js';
 import { silentLogger } from '../infrastructure/logger.js';
@@ -45,18 +46,28 @@ class FakeWebhookClient implements WebhookClient {
 interface Harness {
   readonly dispatcher: Dispatcher;
   readonly subscriptions: InMemorySubscriptionRepository;
+  readonly events: InMemoryEventRepository;
   readonly deliveries: InMemoryDeliveryRepository;
   readonly webhookClient: FakeWebhookClient;
   readonly scheduler: ManualScheduler;
 }
 
+const EVENT: WebhookEvent = createEvent(
+  { type: 'order.created', data: { orderId: '12345' } },
+  'evt_1',
+  new Date('2026-08-28T10:15:00.000Z'),
+);
+
 function newHarness(retryPolicy: RetryPolicy = NO_RETRY): Harness {
   const subscriptions = new InMemorySubscriptionRepository();
+  const events = new InMemoryEventRepository();
+  void events.save(EVENT); // in-memory save populates synchronously
   const deliveries = new InMemoryDeliveryRepository();
   const webhookClient = new FakeWebhookClient();
   const scheduler = new ManualScheduler();
   const dispatcher = new Dispatcher({
     subscriptions,
+    events,
     deliveries,
     webhookClient,
     scheduler,
@@ -67,14 +78,8 @@ function newHarness(retryPolicy: RetryPolicy = NO_RETRY): Harness {
     // Full jitter (random() === 1) makes the backoff delay deterministic: the cap.
     random: () => 1,
   });
-  return { dispatcher, subscriptions, deliveries, webhookClient, scheduler };
+  return { dispatcher, subscriptions, events, deliveries, webhookClient, scheduler };
 }
-
-const EVENT: WebhookEvent = createEvent(
-  { type: 'order.created', data: { orderId: '12345' } },
-  'evt_1',
-  new Date('2026-08-28T10:15:00.000Z'),
-);
 
 describe('Dispatcher.dispatchEvent', () => {
   it('creates no deliveries when nothing matches', async () => {

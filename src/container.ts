@@ -16,6 +16,7 @@ import { SubscriptionService } from './application/subscription-service.js';
 import { EventService, type EventDispatcher } from './application/event-service.js';
 import { DeliveryService } from './application/delivery-service.js';
 import { Dispatcher } from './application/dispatcher.js';
+import { RecoveryService } from './application/recovery.js';
 import { realScheduler, type Scheduler } from './application/scheduler.js';
 import { systemClock, type Clock } from './application/clock.js';
 import { randomIdGenerator } from './domain/ids.js';
@@ -52,6 +53,8 @@ export interface Application {
   readonly repositories: Repositories;
   /** The dispatcher wired into event ingestion, exposed for recovery and tests. */
   readonly eventDispatcher: EventDispatcher;
+  /** Periodic recovery sweep (started/stopped by the process entry point). */
+  readonly recovery: RecoveryService;
   readonly httpServer: http.Server;
 }
 
@@ -113,25 +116,25 @@ export function buildApplication(
     targetUrlPolicy: { allowInsecure: config.security.allowInsecureTargetUrls },
   });
 
-  const eventDispatcher =
-    options.eventDispatcher ??
-    new Dispatcher({
-      subscriptions: repositories.subscriptions,
-      deliveries: repositories.deliveries,
-      webhookClient: options.webhookClient ?? createHttpWebhookClient(),
-      scheduler: options.scheduler ?? realScheduler,
-      clock,
-      ids: randomIdGenerator,
-      logger,
-      config: {
-        webhookTimeoutMs: config.delivery.webhookTimeoutMs,
-        retryPolicy: {
-          maxAttempts: config.delivery.maxAttempts,
-          baseDelayMs: config.delivery.retryBaseDelayMs,
-          maxDelayMs: config.delivery.retryMaxDelayMs,
-        },
+  const dispatcher = new Dispatcher({
+    subscriptions: repositories.subscriptions,
+    events: repositories.events,
+    deliveries: repositories.deliveries,
+    webhookClient: options.webhookClient ?? createHttpWebhookClient(),
+    scheduler: options.scheduler ?? realScheduler,
+    clock,
+    ids: randomIdGenerator,
+    logger,
+    config: {
+      webhookTimeoutMs: config.delivery.webhookTimeoutMs,
+      retryPolicy: {
+        maxAttempts: config.delivery.maxAttempts,
+        baseDelayMs: config.delivery.retryBaseDelayMs,
+        maxDelayMs: config.delivery.retryMaxDelayMs,
       },
-    });
+    },
+  });
+  const eventDispatcher = options.eventDispatcher ?? dispatcher;
 
   const eventService = new EventService({
     repository: repositories.events,
@@ -142,6 +145,17 @@ export function buildApplication(
   });
 
   const deliveryService = new DeliveryService(repositories.deliveries);
+
+  const recovery = new RecoveryService({
+    deliveries: repositories.deliveries,
+    resumer: dispatcher,
+    clock,
+    logger,
+    config: {
+      stuckDeliveringThresholdMs: config.recovery.stuckDeliveringThresholdMs,
+      batchLimit: config.recovery.batchLimit,
+    },
+  });
 
   const router = new Router();
   registerHealthRoute(router);
@@ -155,5 +169,5 @@ export function buildApplication(
     maxRequestBodyBytes: config.http.maxRequestBodyBytes,
   });
 
-  return { config, logger, repositories, eventDispatcher, httpServer };
+  return { config, logger, repositories, eventDispatcher, recovery, httpServer };
 }

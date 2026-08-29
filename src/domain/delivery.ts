@@ -13,7 +13,8 @@
  *      └──────────────────────────┤
  *      │                          └──completeFailed───▶ failed    (terminal)
  *      │
- *   reclaimStuck (recovery: delivering abandoned by a crash ──▶ pending)
+ *   reclaimStuck  (recovery: delivering abandoned by a crash ──▶ pending)
+ *   abandonDelivery (recovery: pending that cannot progress ──▶ failed, terminal)
  */
 
 import { InvalidDeliveryTransitionError } from './errors.js';
@@ -144,6 +145,23 @@ export function completeFailed(delivery: Delivery, params: FailParams): Delivery
     status: 'failed',
     lastStatusCode: params.statusCode,
     lastError: params.error,
+    updatedAt: timestamp,
+    completedAt: timestamp,
+    nextAttemptAt: null,
+  };
+}
+
+/**
+ * Recovery: give up on a `pending` delivery that cannot make progress — its
+ * retry budget is spent, or the source event is gone. Terminal `failed`.
+ */
+export function abandonDelivery(delivery: Delivery, reason: string, now: Date): Delivery {
+  assertTransition(delivery, 'failed', ['pending']);
+  const timestamp = now.toISOString();
+  return {
+    ...delivery,
+    status: 'failed',
+    lastError: reason,
     updatedAt: timestamp,
     completedAt: timestamp,
     nextAttemptAt: null,
