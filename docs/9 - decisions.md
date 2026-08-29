@@ -88,8 +88,8 @@ It is a living document, updated as implementation proceeds.
   survive a process restart (including a `tsx watch` reload), so manual testing
   that needs durable state should switch to `dynamodb` (`docs/13` §2.1 / §8).
 - **DynamoDB in tests:** unit tests fully mock the repositories. DynamoDB-backed
-  repository tests are opt-in (`RUN_DYNAMODB_TESTS=1`, with `DYNAMODB_ENDPOINT`
-  pointing at DynamoDB Local); the suite creates its own uuid-prefixed tables,
+  repository tests are opt-in (`RUN_DYNAMODB_TESTS=1`, against real AWS or any
+  `DYNAMODB_ENDPOINT`); the suite creates its own uuid-prefixed tables,
   runs the shared repository contracts against the DynamoDB implementations, and
   deletes those tables in `afterAll` regardless of outcome. Not run by `npm test`.
 - **DynamoDB `list` filtering:** the repository picks the most selective GSI for

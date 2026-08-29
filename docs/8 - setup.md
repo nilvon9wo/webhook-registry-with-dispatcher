@@ -135,7 +135,6 @@ Useful WebStorm capabilities:
 - ESLint and Prettier integration;
 - JSON/YAML support;
 - integrated HTTP Client for API testing;
-- Docker support if Docker is used;
 - code inspections and refactoring.
 
 Make sure the Node.js runtime configured by WebStorm points to the intended Node 24 LTS installation.
@@ -405,6 +404,10 @@ Do not optimize DynamoDB capacity for a workload that does not exist.
 
 # 14. DynamoDB Local
 
+> **Outcome (as built):** not used. DynamoDB verification was done against real
+> AWS. The app supports a `DYNAMODB_ENDPOINT` override so a local emulator *could*
+> be pointed at, but nothing in this project runs or tests that way.
+
 DynamoDB Local is **optional**.
 
 It is not required for the first implementation.
@@ -432,6 +435,10 @@ If the implementation benefits from DynamoDB Local, Docker Desktop can be instal
 ---
 
 # 15. Docker
+
+> **Outcome (as built):** not used at all — no `Dockerfile`, no compose file,
+> nothing run or tested under Docker. This section is the pre-implementation
+> deliberation; the decision was that Docker was never necessary.
 
 Docker is **optional**.
 
@@ -888,6 +895,9 @@ Perform setup in this order:
 ```
 
 ## Optional
+
+> None of the following were used in the final implementation. It runs on
+> Node.js with the AWS SDK; DynamoDB verification was against real AWS.
 
 ```text
 ○ Docker

@@ -20,7 +20,7 @@ export interface AppConfig {
   readonly persistence: PersistenceMode;
   readonly aws: {
     readonly region: string;
-    /** Optional override, e.g. `http://localhost:8000` for DynamoDB Local. */
+    /** Optional endpoint override for a local DynamoDB-compatible service; unset = real AWS. */
     readonly dynamoEndpoint: string | undefined;
     readonly tables: {
       readonly subscriptions: string;

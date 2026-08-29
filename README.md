@@ -80,10 +80,13 @@ live Swagger UI at `/docs` when the server is running.
 - **No AWS account** is needed to build, run, or test with the default in-memory
   persistence. DynamoDB persistence uses the standard AWS SDK credential chain.
 - Optional: `cfn-lint` (Python) to validate the CloudFormation template.
-- The opt-in DynamoDB repository tests need a DynamoDB endpoint — **AWS
-  credentials** (how they were run for this submission) or a local
-  `amazon/dynamodb-local` via Docker (`DYNAMODB_ENDPOINT`); see
-  [Tests](#tests). Neither is required to build, run, or `npm test`.
+- The opt-in DynamoDB repository tests need a reachable DynamoDB endpoint —
+  **AWS credentials** (how they were run for this submission), or any
+  DynamoDB-compatible endpoint set via `DYNAMODB_ENDPOINT`. Not required to
+  build, run, or `npm test`.
+
+> This project has no Docker involvement — no `Dockerfile`, no compose file,
+> nothing tested or run under Docker. It runs directly on Node.js.
 
 ## Install
 
@@ -120,7 +123,7 @@ exits non-zero.
 | `LOG_FORMAT`                    | `auto`                           | `auto` (pretty on a TTY, JSON if piped) \| `json` \| `pretty` — see [docs/11](docs/11%20-%20logging.md#rendering-log_format) |
 | `PERSISTENCE`                   | `memory`                         | `memory` (in-process) or `dynamodb`                                                                                          |
 | `AWS_REGION`                    | `eu-central-1`                   | Region for the DynamoDB client                                                                                               |
-| `DYNAMODB_ENDPOINT`             | _(unset)_                        | Override endpoint, e.g. `http://localhost:8000` for DynamoDB Local                                                           |
+| `DYNAMODB_ENDPOINT`             | _(unset)_                        | Override the DynamoDB endpoint (a local emulator / LocalStack); unset = real AWS                                             |
 | `DYNAMODB_SUBSCRIPTIONS_TABLE`  | `webhook-registry-subscriptions` | Table name                                                                                                                   |
 | `DYNAMODB_EVENTS_TABLE`         | `webhook-registry-events`        | Table name                                                                                                                   |
 | `DYNAMODB_DELIVERIES_TABLE`     | `webhook-registry-deliveries`    | Table name                                                                                                                   |
@@ -300,17 +303,15 @@ their own uuid-prefixed tables, run the shared repository contract, and delete
 the tables in `afterAll` whether they pass or fail.
 
 ```bash
-# Against real AWS — how this submission verified them (needs create/delete-table
+# How this submission verified them — against real AWS (needs create/delete-table
 # permission; PAY_PER_REQUEST throwaway tables, negligible cost):
 RUN_DYNAMODB_TESTS=1 AWS_PROFILE=<profile> npm run test:all              # bash
 $env:RUN_DYNAMODB_TESTS=1; $env:AWS_PROFILE='<profile>'; npm run test:all  # PowerShell
-
-# Against DynamoDB Local instead (standard AWS emulator, same wire protocol;
-# this path is supported by the config but was not exercised during development):
-RUN_DYNAMODB_TESTS=1 DYNAMODB_ENDPOINT=http://localhost:8000 \
-  AWS_REGION=eu-central-1 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
-  npm run test:integration     # docker run -p 8000:8000 amazon/dynamodb-local
 ```
+
+The same tests also accept a `DYNAMODB_ENDPOINT` pointing at any
+DynamoDB-compatible endpoint (a local emulator, LocalStack, …) instead of real
+AWS. That path is not exercised here.
 
 ## Architecture at a glance
 

@@ -82,11 +82,10 @@ Prefer the simplest compatible implementation.
 
 Examples:
 
-- AWS credentials unavailable;
-- Docker unavailable;
-- local service unavailable;
+- AWS credentials unavailable / SSO token expired;
+- local service (e.g. a test webhook receiver) unavailable;
 - network unavailable;
-- missing environment variable.
+- missing or invalid environment variable.
 
 Do not rewrite application code to conceal an environment problem.
 

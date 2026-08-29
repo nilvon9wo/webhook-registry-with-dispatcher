@@ -3,7 +3,8 @@
  *
  * Credentials are never passed here — the AWS SDK default provider chain
  * (environment, SSO, shared config/profile, container/instance roles) resolves
- * them. `endpoint` is only set for local development against DynamoDB Local.
+ * them. `endpoint` is only set to target a local DynamoDB-compatible service
+ * instead of real AWS.
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';

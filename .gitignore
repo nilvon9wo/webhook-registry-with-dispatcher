@@ -113,13 +113,6 @@ Desktop.ini
 *.orig
 
 # ============================================================
-# Docker / Local Development
-# ============================================================
-
-# Local Docker volumes/configuration
-.docker/
-
-# ============================================================
 # AWS / Infrastructure
 # ============================================================
 
@@ -142,12 +135,6 @@ Desktop.ini
 
 tmp/
 temp/
-
-# Local DynamoDB data, if DynamoDB Local is used
-.dynamodb/
-
-# LocalStack state
-.localstack/
 
 # ============================================================
 # Challenge / Submission Artifacts

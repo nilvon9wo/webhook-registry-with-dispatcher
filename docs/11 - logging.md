@@ -176,7 +176,7 @@ and backend parse fields directly — no grok patterns, no regex-over-prose.
 | AWS Lambda | runtime | CloudWatch Logs (automatic) |
 | Google Cloud Run / Azure Container Apps | runtime | Cloud Logging / Log Analytics (automatic) |
 | Plain VM + systemd | journald | `journalctl`; optional agent → backend |
-| Local `docker run` | json-file / journald driver | `docker logs` |
+| Any container runtime | its logging driver | the platform's log store |
 
 In all of these the application code is identical: write JSON to fd 1/2.
 Swapping backend (Datadog → Elastic, say) is a collector config change, not a
@@ -216,7 +216,7 @@ unchanged. No call site changes.
 | **A. stdout + document the pipeline** *(chosen)* | This section; a README pointer. The deployment platform captures fd 1/2 (table above). | ~30 min, no code | none | none | none |
 | **B. Config-driven extra sink (file / syslog)** | `LOG_DESTINATION` (`stdout` \| `file` \| `both`) + `LOG_FILE_PATH`; a fan-out `write`; config validation; tests. | ~1–1.5 hr | none | none (writes to local disk; log **rotation** then becomes an ops task — `logrotate` or the platform) | negligible; a second synchronous write per line |
 | **C. Swap internals for `pino`** | Replace the factory body with `pino`; thin adapter for argument order (`info(msg, fields)` → pino `info(fields, msg)`); keep the port, message catalogue, field dictionary, `child()`. Gain `redact`, and `pino.transport` targets: `pino/file`, `pino-opentelemetry-transport`, `pino-datadog-transport`, `pino-elasticsearch`, `pino-socket`, `pino-pretty` (dev). | ~1.5–3 hr incl. updating the ~3 tests that assert on the `write` seam and `docs/11` | `pino` (one dependency; the de-facto Node standard, actively maintained, no native addons) | none at runtime | **faster** than today: pino serialises in a fast path and, with a transport, moves I/O to a worker thread (`sonic-boom`), so the event loop no longer blocks on writes |
-| **D. pino + a shipping pipeline in-repo** | C, plus `pino-opentelemetry-transport` (or a vendor transport) and a docker-compose with an OpenTelemetry Collector / Vector, wired end-to-end with a demo. | ~1 day | pino + OTel exporter packages | the collector runs somewhere: a sidecar (negligible compute) **or** managed ingest priced **per GB ingested + retention** — CloudWatch Logs ≈ $0.50/GB in + $0.03/GB·month; Datadog ≈ $0.10/GB in + retention tier; Azure Monitor ≈ $0.10–0.30/GB after a free grant. Fractions of a cent at challenge traffic; a real budget line at production webhook volume, which is why sampling and payload-free logs matter. | collector adds < 1 ms per line locally; backend ingestion is out-of-process and asynchronous |
+| **D. pino + a shipping pipeline in-repo** | C, plus `pino-opentelemetry-transport` (or a vendor transport) and a local OpenTelemetry Collector / Vector, wired end-to-end with a demo. | ~1 day | pino + OTel exporter packages | the collector runs somewhere: a sidecar (negligible compute) **or** managed ingest priced **per GB ingested + retention** — CloudWatch Logs ≈ $0.50/GB in + $0.03/GB·month; Datadog ≈ $0.10/GB in + retention tier; Azure Monitor ≈ $0.10–0.30/GB after a free grant. Fractions of a cent at challenge traffic; a real budget line at production webhook volume, which is why sampling and payload-free logs matter. | collector adds < 1 ms per line locally; backend ingestion is out-of-process and asynchronous |
 
 ### Recommendation
 

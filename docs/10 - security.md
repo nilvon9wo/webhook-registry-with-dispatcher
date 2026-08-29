@@ -47,9 +47,9 @@ DynamoDB policy the runtime needs is documented in the template header.
 `.gitignore` excludes `.env`, `.env.*` (except `.env.example`), `*.pem`,
 `*.key`, `*.p12`, `*.pfx`, and `.aws/`. Only `.env.example` is tracked and it
 contains no secret (`AWS_REGION` only). `git grep` for key/password/private-key
-patterns over tracked non-doc files is clean. The `AWS_ACCESS_KEY_ID=local`
-in the DynamoDB test doc comment is a DynamoDB-Local placeholder, not a
-credential.
+patterns over tracked non-doc files is clean. No credentials — real or
+placeholder — appear anywhere in the repository; the DynamoDB tests take
+credentials from the AWS SDK provider chain.
 
 ## 5. Unbounded request body — *mitigated*
 

@@ -1,15 +1,13 @@
 /**
  * Opt-in DynamoDB repository integration tests.
  *
- * Skipped unless `RUN_DYNAMODB_TESTS=1`. Needs a DynamoDB endpoint:
+ * Skipped unless `RUN_DYNAMODB_TESTS=1`. Needs a reachable DynamoDB endpoint —
+ * real AWS (how this submission ran them):
  *
- *   # real AWS (how this submission ran them):
  *   RUN_DYNAMODB_TESTS=1 AWS_PROFILE=<profile> npm run test:integration
  *
- *   # or DynamoDB Local (docker run -p 8000:8000 amazon/dynamodb-local):
- *   RUN_DYNAMODB_TESTS=1 DYNAMODB_ENDPOINT=http://localhost:8000 \
- *     AWS_REGION=eu-central-1 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
- *     npm run test:integration
+ * or any DynamoDB-compatible endpoint via `DYNAMODB_ENDPOINT` (a local emulator
+ * / LocalStack — not exercised by this project).
  *
  * The suite creates its own uuid-prefixed tables, runs the shared repository
  * contracts against the DynamoDB implementations, and deletes those tables in
