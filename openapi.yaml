@@ -122,8 +122,9 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [subscriptions]
                 properties:
-                  items:
+                  subscriptions:
                     type: array
                     items: { $ref: '#/components/schemas/Subscription' }
 
@@ -213,8 +214,9 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [deliveries]
                 properties:
-                  items:
+                  deliveries:
                     type: array
                     items: { $ref: '#/components/schemas/Delivery' }
         '400': { $ref: '#/components/responses/ValidationError' }

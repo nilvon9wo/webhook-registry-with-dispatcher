@@ -87,7 +87,7 @@ describe('/subscriptions lifecycle', () => {
 
     // Assert
     expect(all.status).toBe(200);
-    expect((all.body as { items: unknown[] }).items).toHaveLength(2);
+    expect((all.body as { subscriptions: unknown[] }).subscriptions).toHaveLength(2);
   });
 
   it('filters the list by event type', async () => {
@@ -100,7 +100,7 @@ describe('/subscriptions lifecycle', () => {
 
     // Assert
     expect(filtered.status).toBe(200);
-    expect((filtered.body as { items: unknown[] }).items).toHaveLength(1);
+    expect((filtered.body as { subscriptions: unknown[] }).subscriptions).toHaveLength(1);
   });
 
   it.each([

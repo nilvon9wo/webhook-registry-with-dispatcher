@@ -48,13 +48,13 @@ describe('end-to-end: publish event -> webhook delivery', () => {
         data: { orderId: '12345' },
       });
 
-      const deliveriesResponse = await app.request<{ items: unknown[] }>(
+      const deliveriesResponse = await app.request<{ deliveries: unknown[] }>(
         'GET',
         `/deliveries?eventId=${eventId}`,
       );
       expect(deliveriesResponse.status).toBe(200);
-      expect(deliveriesResponse.body.items).toHaveLength(1);
-      expect(deliveriesResponse.body.items[0]).toMatchObject({
+      expect(deliveriesResponse.body.deliveries).toHaveLength(1);
+      expect(deliveriesResponse.body.deliveries[0]).toMatchObject({
         subscriptionId: subscription.body.id,
         status: 'delivered',
         attempts: 1,

@@ -228,8 +228,8 @@ curl -s 'localhost:3000/subscriptions?eventType=nope'
 ```
 
 **Expect:** the single GET returns the `$SUB1` object; the plain list returns
-`{"items":[…]}` containing it; the `order.created` filter contains it; the
-`nope` filter returns `{"items":[]}`.
+`{"subscriptions":[…]}` containing it; the `order.created` filter contains it;
+the `nope` filter returns `{"subscriptions":[]}`.
 
 ### G4 — publish a matching event
 
@@ -273,15 +273,15 @@ curl -s "localhost:3000/deliveries?eventId=$EVT_NM"
 **Expect:** the event is **accepted** (`202`) and persisted — publishing is
 decoupled from subscribing, so zero matches is not an error (see `docs/9` →
 "Decoupled publish"). The **inbox is unchanged**; the `/deliveries` query returns
-`{"items":[]}`; the service log shows `dispatch.started` with `matchedCount: 0`
-**and a yellow `dispatch.no_subscribers` warning** — the signal an operator would
-alert on to catch a mis-typed event type.
+`{"deliveries":[]}`; the service log shows `dispatch.started` with
+`matchedCount: 0` **and a yellow `dispatch.no_subscribers` warning** — the signal
+an operator would alert on to catch a mis-typed event type.
 
-`items: []` here means **no subscriber matched**. It is distinct from "subscribers
-matched but every delivery failed" — that case returns delivery **records** with
-`status: "failed"` (see R2). The list envelope is `{ "items": [...] }` for both
-`/deliveries` and `/subscriptions`; see `docs/9` → "List responses use a
-`{ items }` envelope".
+`deliveries: []` here means **no subscriber matched**. It is distinct from
+"subscribers matched but every delivery failed" — that case returns delivery
+**records** with `status: "failed"` (see R2). List endpoints name their array
+after the resource (`{ "deliveries": [...] }`, `{ "subscriptions": [...] }`); see
+`docs/9` → "List responses name their array after the resource".
 
 ### G6 — event with no `data`
 

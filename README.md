@@ -135,17 +135,17 @@ SDK provider chain (environment, SSO, shared config, instance/task role).
 
 ## API
 
-| Method   | Path                  | Body                       | Success            | Notes                                                |
-| -------- | --------------------- | -------------------------- | ------------------ | ---------------------------------------------------- |
-| `POST`   | `/subscriptions`      | `{ eventType, targetUrl }` | `201` + `Location` | Server assigns `id` + timestamps                     |
-| `GET`    | `/subscriptions`      | —                          | `200 { items }`    | Optional `?eventType=`                               |
-| `GET`    | `/subscriptions/{id}` | —                          | `200` / `404`      |                                                      |
-| `PUT`    | `/subscriptions/{id}` | `{ eventType, targetUrl }` | `200` / `404`      | Full replace; no upsert                              |
-| `DELETE` | `/subscriptions/{id}` | —                          | `204` / `404`      | Stops future deliveries; keeps delivery history      |
-| `POST`   | `/events`             | `{ type, data? }`          | `202`              | Persists, then dispatches asynchronously             |
-| `GET`    | `/deliveries`         | —                          | `200 { items }`    | Optional `?eventId= &subscriptionId= &status=` (AND) |
-| `GET`    | `/deliveries/{id}`    | —                          | `200` / `404`      |                                                      |
-| `GET`    | `/health`             | —                          | `200`              | Liveness only; does not probe the datastore          |
+| Method   | Path                  | Body                       | Success                 | Notes                                                |
+| -------- | --------------------- | -------------------------- | ----------------------- | ---------------------------------------------------- |
+| `POST`   | `/subscriptions`      | `{ eventType, targetUrl }` | `201` + `Location`      | Server assigns `id` + timestamps                     |
+| `GET`    | `/subscriptions`      | —                          | `200 { subscriptions }` | Optional `?eventType=`                               |
+| `GET`    | `/subscriptions/{id}` | —                          | `200` / `404`           |                                                      |
+| `PUT`    | `/subscriptions/{id}` | `{ eventType, targetUrl }` | `200` / `404`           | Full replace; no upsert                              |
+| `DELETE` | `/subscriptions/{id}` | —                          | `204` / `404`           | Stops future deliveries; keeps delivery history      |
+| `POST`   | `/events`             | `{ type, data? }`          | `202`                   | Persists, then dispatches asynchronously             |
+| `GET`    | `/deliveries`         | —                          | `200 { deliveries }`    | Optional `?eventId= &subscriptionId= &status=` (AND) |
+| `GET`    | `/deliveries/{id}`    | —                          | `200` / `404`           |                                                      |
+| `GET`    | `/health`             | —                          | `200`                   | Liveness only; does not probe the datastore          |
 
 - `eventType` / `type`: dot/underscore/hyphen-separated alphanumeric segments
   (e.g. `order.created`), ≤ 100 chars.

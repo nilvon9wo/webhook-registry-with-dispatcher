@@ -13,8 +13,8 @@ afterEach(async () => {
   await app.close();
 });
 
-interface ItemsBody {
-  readonly items: Delivery[];
+interface DeliveriesBody {
+  readonly deliveries: Delivery[];
 }
 
 async function seed(deliveries: Delivery[]): Promise<void> {
@@ -29,11 +29,11 @@ describe('GET /deliveries', () => {
     await seed([aDelivery(), aDelivery(), aDelivery()]);
 
     // Act
-    const response = await app.request<ItemsBody>('GET', '/deliveries');
+    const response = await app.request<DeliveriesBody>('GET', '/deliveries');
 
     // Assert
     expect(response.status).toBe(200);
-    expect(response.body.items).toHaveLength(3);
+    expect(response.body.deliveries).toHaveLength(3);
   });
 
   it.each([
@@ -50,11 +50,11 @@ describe('GET /deliveries', () => {
     ]);
 
     // Act
-    const response = await app.request<ItemsBody>('GET', `/deliveries?${query}`);
+    const response = await app.request<DeliveriesBody>('GET', `/deliveries?${query}`);
 
     // Assert
     expect(response.status).toBe(200);
-    expect(response.body.items).toHaveLength(matches);
+    expect(response.body.deliveries).toHaveLength(matches);
   });
 
   it('rejects an unknown status filter with 400', async () => {

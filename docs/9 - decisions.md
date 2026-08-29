@@ -120,19 +120,20 @@ It is a living document, updated as implementation proceeds.
   written only by the dispatcher and recovery. Returns the full delivery record
   (status, attempts, `lastStatusCode`, `lastError`, `nextAttemptAt`, timestamps).
   No pagination (out of scope; documented).
-- **List responses use a `{ "items": [...] }` envelope**, the same for
-  `GET /subscriptions` and `GET /deliveries`. Rationale: one list-response shape
-  across the API (a client can share a decoder), and a place to add pagination
-  metadata (`nextCursor`, `total`) without changing the payload shape when S8 is
-  addressed. Trade-off: a resource-named key (`{ "deliveries": [...] }`) would be
-  more self-documenting; `items` was chosen for uniformity and forward
-  compatibility. Distinguishing outcomes from `GET /deliveries?eventId=X`:
-  `items: []` means **no subscription matched** (also logged as
-  `dispatch.no_subscribers`); a non-empty array of records with
-  `status: "failed"` means subscribers matched but delivery failed. The one gap:
-  if a delivery *record* could not be persisted (`dispatch.partial_failure`,
-  the S1-residual window), that subscriber shows neither — cross-check
-  `dispatch.started`'s `matchedCount` in the logs.
+- **List responses name their array after the resource:**
+  `GET /subscriptions` → `{ "subscriptions": [...] }`, `GET /deliveries` →
+  `{ "deliveries": [...] }`. A generic `{ "items": [...] }` envelope was used
+  initially (uniform decoder, room for pagination metadata) but changed to
+  resource-named keys — self-documenting wins, and there is no plausible reason
+  this endpoint would need to return a *different* collection under the same key
+  (pagination metadata would just be sibling properties: `{ deliveries, nextCursor }`).
+  Single-resource responses have no envelope — the object is the body.
+  Distinguishing outcomes from `GET /deliveries?eventId=X`: `deliveries: []`
+  means **no subscription matched** (also logged as `dispatch.no_subscribers`);
+  a non-empty array of records with `status: "failed"` means subscribers matched
+  but delivery failed. The one gap: if a delivery *record* could not be persisted
+  (`dispatch.partial_failure`, the S1-residual window), that subscriber shows
+  neither — cross-check `dispatch.started`'s `matchedCount` in the logs.
 - **No `GET /events/{id}` endpoint.** The spec says events need not be a CRUD
   resource; `/deliveries` (prompt 12) is the observability surface. Events are
   still persisted for durability/audit. A read endpoint would be a reasonable
