@@ -59,9 +59,25 @@ override.
 npm run inbox
 ```
 
-Listens on `http://localhost:4000`. Open that URL in a browser — it shows every
-incoming webhook live (method, path, `X-Webhook-*` headers, JSON body, and the
-status it responded with). It stays empty until you publish an event.
+Listens on `http://localhost:4000`. For **every** webhook it receives it prints
+a block to this terminal — request line, the `X-Webhook-*` and `content-type`
+headers, and the pretty-printed JSON body — and colour-codes the response status
+(green 2xx, yellow 4xx, red 5xx). So you can watch deliveries here without
+leaving the terminal; the same stream is also at `http://localhost:4000` in a
+browser and at `GET /_inbox.json`.
+
+```
+── 11:18:41.832 POST /orders  → 200
+   content-type           application/json
+   x-webhook-event-id     evt_ced5e52a-…
+   x-webhook-delivery-id  del_1a2b3c4d
+   x-webhook-attempt      1
+   { "id": "evt_ced5e52a-…", "type": "order.created", "timestamp": "…Z", "data": { "orderId": "12345" } }
+```
+
+For scenarios with many attempts (R2 fires 4), start it with
+`WEBHOOK_INBOX_COMPACT=1 npm run inbox` to get one summary line per request
+instead of a block.
 
 Make the subscriber misbehave by adding query params to the target URL:
 
@@ -117,6 +133,13 @@ the previous response — they are not literal strings the server knows. Each
 "create" step below shows a command that captures the new id into a variable;
 later steps reuse it. If you prefer, read the id off the response and set it by
 hand, e.g. `SUB1=sub_093505e2-…`.
+
+**Start from a clean slate.** With the default in-memory persistence, restart
+`npm run dev` (terminal 2) to wipe all subscriptions and deliveries — there is
+no bulk-delete endpoint. If you re-run a "create subscription" step without
+deleting the old one, you will have two matching subscriptions and every event
+will be delivered twice (once per subscription — that is correct fan-out, not a
+bug). `curl -s localhost:3000/subscriptions` shows what currently exists.
 
 Paste this helper once (Git Bash) so the capture commands work without `jq`.
 It reads the first `"<key>":"<value>"` pair from stdin:
@@ -180,10 +203,11 @@ EVT1=$(echo "$RESP" | jval id); echo "EVT1=$EVT1"
 
 - Response is immediate (no wait — it is `202 Accepted`); body has `id` (starts
   `evt_`), `type`, `data`, `createdAt`.
-- **Inbox** shows one `POST /orders` within ~1 s: `content-type: application/json`,
-  `X-Webhook-Event-Id` = `$EVT1`, `X-Webhook-Delivery-Id: del_…`,
-  `X-Webhook-Attempt: 1`, body
-  `{"id":"<EVT1>","type":"order.created","timestamp":"…Z","data":{"orderId":"12345"}}`.
+- **Inbox terminal** prints one `POST /orders` block within ~1 s with
+  `content-type: application/json`, `x-webhook-event-id` = `$EVT1`,
+  `x-webhook-delivery-id: del_…`, `x-webhook-attempt: 1`, and body
+  `{ "id": "<EVT1>", "type": "order.created", "timestamp": "…Z", "data": { "orderId": "12345" } }`.
+  (One block per matching subscription — see the note under G7.)
 - Service log shows `dispatch.started` (`matchedCount: 1`) then
   `delivery.succeeded` (`httpStatus: 200`).
 

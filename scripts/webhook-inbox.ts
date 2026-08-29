@@ -1,10 +1,12 @@
 /**
  * A standalone local "webhook inbox" for manual testing — a real HTTP server
- * that accepts a POST on any path, records it, and shows the stream on a live
- * web page. No dependency on the app or on npm packages beyond Node.
+ * that accepts a POST on any path, records it, prints it (headers + body), and
+ * shows the stream on a live web page. No dependency on the app or on npm
+ * packages beyond Node.
  *
- *   npm run inbox                 # listens on http://localhost:4000
+ *   npm run inbox                     # listens on http://localhost:4000
  *   WEBHOOK_INBOX_PORT=5000 npm run inbox
+ *   WEBHOOK_INBOX_COMPACT=1 npm run inbox   # one summary line per request
  *
  * Point a subscription's targetUrl at it, e.g. http://localhost:4000/orders.
  * (The app's SSRF guard blocks loopback, so run the app with
@@ -21,6 +23,20 @@ import type { AddressInfo } from 'node:net';
 
 const PORT = Number(process.env.WEBHOOK_INBOX_PORT ?? 4000);
 const MAX_RECORDS = 200;
+/** `WEBHOOK_INBOX_COMPACT=1` -> one summary line per request instead of a block. */
+const COMPACT = process.env.WEBHOOK_INBOX_COMPACT === '1';
+
+const ESC = String.fromCharCode(27);
+const COLOR = Boolean(process.stdout.isTTY) && !('NO_COLOR' in process.env);
+const paint = (code: string, text: string): string =>
+  COLOR ? `${ESC}[${code}m${text}${ESC}[0m` : text;
+
+function statusColor(status: number): string {
+  if (status >= 500) return '31;1'; // red
+  if (status >= 400) return '33;1'; // yellow
+  if (status >= 300) return '36'; // cyan
+  return '32'; // green
+}
 
 interface Received {
   readonly n: number;
@@ -118,11 +134,7 @@ const server = http.createServer((request, response) => {
     if (received.length > MAX_RECORDS) {
       received.length = MAX_RECORDS;
     }
-    process.stdout.write(
-      `${record.receivedAt}  ${record.method} ${record.path}  -> ${status}` +
-        `  attempt=${record.headers['x-webhook-attempt'] ?? '-'}` +
-        `  event=${record.headers['x-webhook-event-id'] ?? '-'}\n`,
-    );
+    process.stdout.write(formatRecord(record));
 
     const delayMs = Number(url.searchParams.get('delay') ?? 0);
     const send = (): void => {
@@ -152,6 +164,42 @@ function parseJson(raw: string): unknown {
   } catch {
     return raw;
   }
+}
+
+/** Renders one received request for the terminal (block by default, one line in COMPACT mode). */
+function formatRecord(record: Received): string {
+  const time = record.receivedAt.slice(11, 23);
+  const status = paint(statusColor(record.respondedStatus), String(record.respondedStatus));
+  const requestLine = `${record.method} ${record.path}`;
+
+  if (COMPACT) {
+    return (
+      `${paint('2', time)}  ${requestLine}  → ${status}` +
+      `  event=${record.headers['x-webhook-event-id'] ?? '-'}` +
+      `  delivery=${record.headers['x-webhook-delivery-id'] ?? '-'}` +
+      `  attempt=${record.headers['x-webhook-attempt'] ?? '-'}\n`
+    );
+  }
+
+  const lines: string[] = [paint('2', `── ${time} `) + `${requestLine}  → ${status}`];
+
+  const headerKeys = Object.keys(record.headers);
+  const pad = Math.max(0, ...headerKeys.map((key) => key.length));
+  for (const key of headerKeys) {
+    lines.push(`   ${paint('2', key.padEnd(pad))}  ${record.headers[key] ?? ''}`);
+  }
+
+  lines.push(...bodyLines(record.body));
+  return `${lines.join('\n')}\n`;
+}
+
+function bodyLines(body: unknown): string[] {
+  if (body === null) {
+    return [`   ${paint('2', '(no body)')}`];
+  }
+  const text = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+  const clipped = text.length > 2000 ? `${text.slice(0, 2000)}\n   … (truncated)` : text;
+  return clipped.split('\n').map((line) => `   ${line}`);
 }
 
 const PAGE = `<!doctype html>
