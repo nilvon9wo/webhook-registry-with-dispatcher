@@ -100,6 +100,8 @@ export function buildRepositories(config: AppConfig, logger: Logger): Repositori
 
 export interface BuildApplicationOptions {
   readonly clock?: Clock;
+  /** Replaces the root logger (tests inject a silent or capturing one). */
+  readonly logger?: Logger;
   /** Replaces the real {@link Dispatcher} (tests inject a spy or a fake). */
   readonly eventDispatcher?: EventDispatcher;
   /** Replaces the real HTTP webhook client (tests inject a fake). */
@@ -114,7 +116,7 @@ export function buildApplication(
   config: AppConfig,
   options: BuildApplicationOptions = {},
 ): Application {
-  const logger = createLogger({ level: config.logLevel });
+  const logger = options.logger ?? createLogger({ level: config.logLevel });
   const clock = options.clock ?? systemClock;
   const repositories = buildRepositories(config, logger);
 

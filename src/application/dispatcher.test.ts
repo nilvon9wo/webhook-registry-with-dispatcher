@@ -246,6 +246,38 @@ describe('Dispatcher.dispatchEvent', () => {
     expect(statusDuringCall).toBe('delivering');
   });
 
+  it('dispatches to matching subscribers concurrently, not one after another', async () => {
+    // Arrange — three subscribers; each webhook call blocks until released.
+    const { dispatcher, subscriptions, webhookClient } = newHarness();
+    for (const id of ['sub_a', 'sub_b', 'sub_c']) {
+      await subscriptions.save(
+        aSubscription({ id, eventType: 'order.created', targetUrl: `https://${id}.example/h` }),
+      );
+    }
+    let inFlight = 0;
+    let peakInFlight = 0;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    webhookClient.responder = async () => {
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      await gate;
+      inFlight -= 1;
+      return { kind: 'success', statusCode: 200 };
+    };
+
+    // Act
+    const done = dispatcher.dispatchEvent(EVENT);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    await done;
+
+    // Assert — all three requests were in flight at the same time.
+    expect(peakInFlight).toBe(3);
+  });
+
   it('sends the spec payload shape and correlation headers', async () => {
     // Arrange
     const { dispatcher, subscriptions, webhookClient } = newHarness();
@@ -362,6 +394,36 @@ describe('Dispatcher retry behaviour', () => {
     expect(delivery?.attempts).toBe(3);
     expect(delivery?.lastStatusCode).toBe(200);
     expect(delivery?.lastError).toBeNull();
+  });
+
+  it('keeps the event id and payload identical across every retry attempt', async () => {
+    // Arrange — fail 3 times, then succeed.
+    const { dispatcher, events, scheduler, webhookClient } = await withOneSubscription(RETRY_5);
+    let call = 0;
+    webhookClient.responder = () => {
+      call += 1;
+      return call < 4 ? { kind: 'timeout' } : { kind: 'success', statusCode: 200 };
+    };
+    const storedBefore = await events.get(EVENT.id);
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+    await drainScheduler(scheduler, dispatcher);
+
+    // Assert
+    expect(webhookClient.requests).toHaveLength(4);
+    const eventIds = new Set(webhookClient.requests.map((request) => request.payload.id));
+    const headerIds = new Set(webhookClient.requests.map((r) => r.headers['X-Webhook-Event-Id']));
+    expect(eventIds).toEqual(new Set(['evt_1']));
+    expect(headerIds).toEqual(new Set(['evt_1']));
+    expect(webhookClient.requests.map((r) => r.headers['X-Webhook-Attempt'])).toEqual([
+      '1',
+      '2',
+      '3',
+      '4',
+    ]);
+    // The persisted event is untouched by dispatch.
+    expect(await events.get(EVENT.id)).toEqual(storedBefore);
   });
 
   it('enforces the maximum attempt count and then records a permanent failure', async () => {

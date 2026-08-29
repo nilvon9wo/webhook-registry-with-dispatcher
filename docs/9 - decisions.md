@@ -162,6 +162,18 @@ It is a living document, updated as implementation proceeds.
   (`PERSISTENCE=memory` in production, insecure target URLs, SSRF guard off,
   recovery disabled). Added `requests.http` and a README Configuration section.
 
+- **Test review (prompt 18):** the pyramid holds — ~210 unit / ~43 integration
+  (in-memory) + 17 opt-in DynamoDB contract / 6 E2E. Every `docs/5` checklist
+  item is covered. Gaps filled this pass: the `abandonDelivery` pure transition
+  (+ terminal-state guards for `abandonDelivery`/`reclaimStuck`); `DELETE
+  /subscriptions` prevents future deliveries **and** leaves historical delivery
+  records intact (spec §3); `PUT` re-routes matching; the event id and payload
+  stay identical across every retry attempt and the persisted event is untouched
+  by dispatch (steering); concurrent (not serial) dispatch to matching
+  subscribers; a real slow subscriber past `WEBHOOK_TIMEOUT_MS` fails the
+  delivery end-to-end. Added a `logger` build option so a test that deliberately
+  triggers an error-level log can silence it.
+
 ## 4. Explicitly out of scope for the four-hour build
 
 SQS / durable queue, multi-instance coordination, full SSRF protection

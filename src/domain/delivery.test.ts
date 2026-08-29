@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { captureError } from '../../tests/support/capture-error.js';
 import { InvalidDeliveryTransitionError } from './errors.js';
 import {
+  abandonDelivery,
   beginAttempt,
   completeDelivered,
   completeFailed,
@@ -156,6 +157,39 @@ describe('completeFailed', () => {
   });
 });
 
+describe('abandonDelivery', () => {
+  it('moves pending → failed (terminal) with the reason as lastError', () => {
+    // Arrange — a delivery that was scheduled for retry but cannot proceed.
+    const retrying = scheduleRetry(beginAttempt(newPendingDelivery(), T1), {
+      statusCode: 500,
+      error: 'HTTP 500',
+      nextAttemptAt: T2,
+      now: T1,
+    });
+
+    // Act
+    const abandoned = abandonDelivery(retrying, 'retry limit reached', T2);
+
+    // Assert
+    expect(abandoned.status).toBe('failed');
+    expect(abandoned.lastError).toBe('retry limit reached');
+    expect(abandoned.completedAt).toBe(T2.toISOString());
+    expect(abandoned.nextAttemptAt).toBeNull();
+    expect(isTerminal(abandoned.status)).toBe(true);
+  });
+
+  it('rejects abandoning a delivery that is currently delivering', () => {
+    // Arrange
+    const delivering = beginAttempt(newPendingDelivery(), T1);
+
+    // Act
+    const error = captureError(() => abandonDelivery(delivering, 'x', T2));
+
+    // Assert
+    expect(error).toBeInstanceOf(InvalidDeliveryTransitionError);
+  });
+});
+
 describe('reclaimStuck', () => {
   it('moves an abandoned delivering record back to pending without rewinding attempts', () => {
     // Arrange
@@ -285,6 +319,8 @@ describe('terminal states are frozen', () => {
           scheduleRetry(terminal, { statusCode: 500, error: 'x', nextAttemptAt: T2, now: T2 }),
         ),
         captureError(() => completeFailed(terminal, { statusCode: 500, error: 'x', now: T2 })),
+        captureError(() => reclaimStuck(terminal, T2)),
+        captureError(() => abandonDelivery(terminal, 'x', T2)),
       ];
 
       // Assert

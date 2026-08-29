@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { silentLogger } from '../../src/infrastructure/logger.js';
 import { startTestApp, type TestApp } from '../support/test-app.js';
 
 let app: TestApp;
@@ -58,8 +59,9 @@ describe('request hardening', () => {
 
   it('does not leak internals in a 500 response', async () => {
     // Arrange — force an internal error by breaking the repository (SSRF guard
-    // off so the request reaches the failing save).
-    const brokenApp = await startTestApp();
+    // off so the request reaches the failing save). Logs are silenced because the
+    // handler will (correctly) log the underlying error at `error` level.
+    const brokenApp = await startTestApp({ logger: silentLogger });
     brokenApp.application.repositories.subscriptions.save = async () => {
       throw new Error('database is on fire at /secret/path');
     };

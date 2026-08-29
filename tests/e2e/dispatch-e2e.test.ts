@@ -136,4 +136,34 @@ describe('end-to-end: publish event -> webhook delivery', () => {
       await broken.close();
     }
   });
+
+  it('fails the delivery when the subscriber is slower than the webhook timeout', async () => {
+    // Arrange — the subscriber takes 500ms; the timeout is 50ms; no retries.
+    const recorder = await startWebhookRecorder({ status: 200, delayMs: 500 });
+    const app = await startTestApp({
+      env: { WEBHOOK_TIMEOUT_MS: '50', MAX_DELIVERY_ATTEMPTS: '1' },
+    });
+    try {
+      await app.request('POST', '/subscriptions', {
+        eventType: 'order.created',
+        targetUrl: recorder.url,
+      });
+
+      // Act
+      const published = await app.request<CreatedId>('POST', '/events', { type: 'order.created' });
+      const eventId = published.body.id;
+
+      // Assert
+      await waitFor(async () => {
+        const [delivery] = await app.application.repositories.deliveries.list({ eventId });
+        return delivery?.status === 'failed';
+      });
+      const [delivery] = await app.application.repositories.deliveries.list({ eventId });
+      expect(delivery).toMatchObject({ status: 'failed', attempts: 1 });
+      expect(delivery?.lastError).toBe('request timed out');
+    } finally {
+      await app.close();
+      await recorder.close();
+    }
+  });
 });
