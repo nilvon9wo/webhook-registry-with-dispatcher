@@ -1,14 +1,9 @@
 /**
- * Process entry point.
- *
- * Responsibilities of this file: load environment configuration, fail fast on
- * an invalid configuration, and (in later implementation steps) wire the
- * composition root — repositories, dispatcher, recovery sweeper, HTTP server —
- * and install graceful-shutdown handlers.
- *
- * Business functionality is intentionally not present yet.
+ * Process entry point: load configuration, build the application, start the
+ * HTTP server, and shut down gracefully on SIGINT/SIGTERM.
  */
 
+import { buildApplication } from './container.js';
 import type { AppConfig } from './config.js';
 import { ConfigError, loadConfig } from './config.js';
 
@@ -31,11 +26,21 @@ function main(): void {
     return;
   }
 
-  process.stdout.write(
-    `webhook-registry-dispatcher: configuration loaded ` +
-      `(env=${config.nodeEnv}, persistence=${config.persistence}, port=${config.port}). ` +
-      `HTTP server wiring is added in a later implementation step.\n`,
-  );
+  const app = buildApplication(config);
+
+  app.httpServer.listen(config.port, () => {
+    app.logger.info('server listening', { port: config.port, persistence: config.persistence });
+  });
+
+  const shutdown = (signal: string): void => {
+    app.logger.info('shutting down', { signal });
+    app.httpServer.close(() => process.exit(0));
+    // Failsafe: do not hang forever if connections do not drain.
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 main();

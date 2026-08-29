@@ -22,3 +22,23 @@ export function captureError(fn: () => unknown): unknown {
   }
   throw new Error('captureError: expected the function to throw, but it returned normally.');
 }
+
+/**
+ * Async counterpart of {@link captureError}: awaits `promise`, returns whatever
+ * it rejects with. Fails loudly if the promise resolves.
+ *
+ * ```ts
+ * // Act
+ * const error = await captureRejection(service.create(badBody));
+ * // Assert
+ * expect(error).toBeInstanceOf(ValidationError);
+ * ```
+ */
+export async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error('captureRejection: expected the promise to reject, but it resolved.');
+}

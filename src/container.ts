@@ -1,0 +1,89 @@
+/**
+ * Composition root.
+ *
+ * Builds the object graph from configuration and returns the pieces the process
+ * entry point needs. This is the only place concrete implementations are chosen;
+ * everything else depends on interfaces.
+ */
+
+import type { AppConfig } from './config.js';
+import type {
+  DeliveryRepository,
+  EventRepository,
+  SubscriptionRepository,
+} from './application/ports.js';
+import { SubscriptionService } from './application/subscription-service.js';
+import { systemClock, type Clock } from './application/clock.js';
+import { randomIdGenerator } from './domain/ids.js';
+import {
+  InMemoryDeliveryRepository,
+  InMemoryEventRepository,
+  InMemorySubscriptionRepository,
+} from './infrastructure/memory/in-memory-repositories.js';
+import { createLogger, type Logger } from './infrastructure/logger.js';
+import { registerHealthRoute } from './http/handlers/health.js';
+import { registerSubscriptionRoutes } from './http/handlers/subscriptions.js';
+import { createHttpServer } from './http/server.js';
+import { Router } from './http/router.js';
+import * as http from 'node:http';
+
+export interface Repositories {
+  readonly subscriptions: SubscriptionRepository;
+  readonly events: EventRepository;
+  readonly deliveries: DeliveryRepository;
+}
+
+export interface Application {
+  readonly config: AppConfig;
+  readonly logger: Logger;
+  readonly repositories: Repositories;
+  readonly httpServer: http.Server;
+}
+
+export function buildRepositories(config: AppConfig, logger: Logger): Repositories {
+  switch (config.persistence) {
+    case 'memory':
+      logger.info('using in-memory persistence');
+      return {
+        subscriptions: new InMemorySubscriptionRepository(),
+        events: new InMemoryEventRepository(),
+        deliveries: new InMemoryDeliveryRepository(),
+      };
+    case 'dynamodb':
+      throw new Error(
+        'DynamoDB persistence is not implemented yet (added in a later step). Set PERSISTENCE=memory.',
+      );
+  }
+}
+
+export interface BuildApplicationOptions {
+  readonly clock?: Clock;
+}
+
+export function buildApplication(
+  config: AppConfig,
+  options: BuildApplicationOptions = {},
+): Application {
+  const logger = createLogger({ level: config.logLevel });
+  const clock = options.clock ?? systemClock;
+  const repositories = buildRepositories(config, logger);
+
+  const subscriptionService = new SubscriptionService({
+    repository: repositories.subscriptions,
+    clock,
+    ids: randomIdGenerator,
+    targetUrlPolicy: { allowInsecure: config.security.allowInsecureTargetUrls },
+  });
+
+  const router = new Router();
+  registerHealthRoute(router);
+  registerSubscriptionRoutes(router, subscriptionService);
+
+  const httpServer = createHttpServer({
+    router,
+    logger,
+    maxRequestBodyBytes: config.http.maxRequestBodyBytes,
+  });
+
+  return { config, logger, repositories, httpServer };
+}
