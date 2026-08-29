@@ -183,6 +183,23 @@ describe('Dispatcher.dispatchEvent', () => {
     expect(webhookClient.requests).toHaveLength(3);
   });
 
+  it('persists the delivering state before making the HTTP call (so a crash is recoverable)', async () => {
+    // Arrange
+    const { dispatcher, subscriptions, deliveries, webhookClient } = newHarness();
+    await subscriptions.save(aSubscription({ id: 'sub_a', eventType: 'order.created' }));
+    let statusDuringCall: string | undefined;
+    webhookClient.responder = async () => {
+      statusDuringCall = (await deliveries.list())[0]?.status;
+      return { kind: 'success', statusCode: 200 };
+    };
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+
+    // Assert
+    expect(statusDuringCall).toBe('delivering');
+  });
+
   it('sends the spec payload shape and correlation headers', async () => {
     // Arrange
     const { dispatcher, subscriptions, webhookClient } = newHarness();

@@ -94,6 +94,16 @@ It is a living document, updated as implementation proceeds.
   body is cancelled (delivery success depends only on status).
 - **Outbound headers:** `Content-Type: application/json`, `X-Webhook-Event-Id`,
   `X-Webhook-Delivery-Id`, `X-Webhook-Attempt`.
+- **Delivery state tracking (prompt 10)** was largely delivered earlier: the
+  `Delivery` entity + pure transition functions in prompt 3, persistence in
+  prompt 4, and the dispatcher persisting after every transition in prompt 9.
+  The `delivering` state is persisted *before* the HTTP call so a crash
+  mid-attempt leaves a recoverable record. Every transition advances
+  `updatedAt`; the record always reflects the latest attempt's status
+  code/error; `lastError` is cleared when a delivery finally succeeds. Prompt 10
+  added history tests (≥3 attempts, exhausted-attempts failure, `updatedAt`
+  progression) and a "persist `delivering` before HTTP" dispatcher test. No new
+  states — `pending | delivering | delivered | failed` as the spec suggests.
 - **AuthN/AuthZ:** out of scope; documented as an assumption.
 
 ## 4. Explicitly out of scope for the four-hour build

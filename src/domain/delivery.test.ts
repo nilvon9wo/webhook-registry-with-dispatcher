@@ -183,6 +183,89 @@ describe('reclaimStuck', () => {
   });
 });
 
+describe('delivery history across repeated attempts', () => {
+  const T3 = new Date('2026-08-28T10:00:40.000Z');
+
+  it('accumulates attempts and always reflects the latest attempt outcome', () => {
+    // Arrange — attempt 1 fails (503), attempt 2 fails (500), attempt 3 succeeds.
+    const attempt1 = beginAttempt(newPendingDelivery(), T1);
+    const afterRetry1 = scheduleRetry(attempt1, {
+      statusCode: 503,
+      error: 'HTTP 503',
+      nextAttemptAt: T2,
+      now: T1,
+    });
+    const attempt2 = beginAttempt(afterRetry1, T2);
+    const afterRetry2 = scheduleRetry(attempt2, {
+      statusCode: 500,
+      error: 'HTTP 500',
+      nextAttemptAt: T3,
+      now: T2,
+    });
+
+    // Act
+    const delivered = completeDelivered(beginAttempt(afterRetry2, T3), 200, T3);
+
+    // Assert
+    expect(delivered.attempts).toBe(3);
+    expect(delivered.status).toBe('delivered');
+    expect(delivered.lastAttemptAt).toBe(T3.toISOString());
+    expect(delivered.lastStatusCode).toBe(200);
+    expect(delivered.lastError).toBeNull(); // cleared once delivery finally succeeds
+    expect(delivered.completedAt).toBe(T3.toISOString());
+  });
+
+  it('retains the final failure detail when attempts are exhausted', () => {
+    // Arrange
+    const attempt1 = beginAttempt(newPendingDelivery(), T1);
+    const afterRetry = scheduleRetry(attempt1, {
+      statusCode: 500,
+      error: 'HTTP 500',
+      nextAttemptAt: T2,
+      now: T1,
+    });
+
+    // Act
+    const failed = completeFailed(beginAttempt(afterRetry, T2), {
+      statusCode: 503,
+      error: 'HTTP 503',
+      now: T2,
+    });
+
+    // Assert
+    expect(failed.attempts).toBe(2);
+    expect(failed.status).toBe('failed');
+    expect(failed.lastStatusCode).toBe(503);
+    expect(failed.lastError).toBe('HTTP 503');
+    expect(failed.completedAt).toBe(T2.toISOString());
+  });
+
+  it('advances updatedAt on every transition', () => {
+    // Arrange
+    const created = newPendingDelivery();
+    const delivering = beginAttempt(created, T1);
+    const retrying = scheduleRetry(delivering, {
+      statusCode: 500,
+      error: 'HTTP 500',
+      nextAttemptAt: T2,
+      now: T2,
+    });
+    const deliveredAt = new Date('2026-08-28T10:01:00.000Z');
+    const delivered = completeDelivered(beginAttempt(retrying, T2), 200, deliveredAt);
+
+    // Act
+    const updatedAts = [created, delivering, retrying, delivered].map((d) => d.updatedAt);
+
+    // Assert
+    expect(updatedAts).toEqual([
+      T0.toISOString(),
+      T1.toISOString(),
+      T2.toISOString(),
+      deliveredAt.toISOString(),
+    ]);
+  });
+});
+
 describe('terminal states are frozen', () => {
   it.each(['delivered', 'failed'] as const)(
     'no transition function accepts a %s record',
