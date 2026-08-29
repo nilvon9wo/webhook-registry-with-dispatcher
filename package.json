@@ -22,6 +22,7 @@
     "test:all": "vitest run",
     "test:watch": "vitest",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:all",
+    "cfn:lint": "cfn-lint infrastructure/cloudformation.yaml",
     "cfn:validate": "aws cloudformation validate-template --template-body file://infrastructure/cloudformation.yaml"
   },
   "allowScripts": {

@@ -54,12 +54,13 @@ export interface DeliveryRepository {
   list(filter?: DeliveryListFilter): Promise<Delivery[]>;
   /**
    * Recovery query: `pending` deliveries whose `nextAttemptAt` is at or before
-   * `now`, oldest first. These are due for a delivery attempt.
+   * `now`, ordered by `nextAttemptAt` ascending (longest-overdue first).
    */
   listPendingDue(now: Date, limit?: number): Promise<Delivery[]>;
   /**
    * Recovery query: `delivering` deliveries whose last attempt started at or
-   * before `before`, oldest first. These were abandoned by a crash mid-attempt.
+   * before `before` (abandoned by a crash mid-attempt), ordered by
+   * `lastAttemptAt` ascending (longest-stuck first).
    */
   listStuckDelivering(before: Date, limit?: number): Promise<Delivery[]>;
 }

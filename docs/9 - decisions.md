@@ -18,7 +18,7 @@ It is a living document, updated as implementation proceeds.
 | 8 | `.env` / `.env.example` only contained `AWS_REGION`. | `.env.example` expanded to document every operational setting. `.env` remains git-ignored. |
 | 9 | `docs/8 - setup.md` referenced `cloudformation/template.yaml`. | Corrected to `infrastructure/cloudformation.yaml`. |
 | 10 | `tsconfig.json` (`rootDir: src`) would not type-check `tests/`. | Added `tsconfig.test.json`; `npm run typecheck` checks both. Unit tests are co-located `src/**/*.test.ts` and excluded from the build. |
-| 11 | The deployed CloudFormation stack (already created on AWS) will diverge from the corrected template. | Accepted by the repository owner; the stack can be redeployed at will. The app reads table names from configuration, so it is not coupled to the stack. |
+| 11 | The deployed CloudFormation stack (already created on AWS) will diverge from the corrected template. | Accepted by the repository owner; the stack can be redeployed at will. The app reads table names from configuration, so it is not coupled to the stack. Template updated in the prompt 6 step (`ResourcePrefix` parameter, Subscriptions PK=`id` + `eventType-index`, Deliveries GSIs re-keyed on `createdAt` + new `status-index`); `cfn-lint` clean. |
 
 ## 2. Tooling decisions
 
@@ -61,8 +61,15 @@ It is a living document, updated as implementation proceeds.
   500 ms (×2, capped at 30000 ms); recovery interval 60000 ms; stuck-`delivering`
   threshold 60000 ms; max request body 1 MiB.
 - **DynamoDB in tests:** unit tests fully mock the repositories. DynamoDB-backed
-  repository tests are opt-in (`RUN_DYNAMODB_TESTS=1`), self-arranging and
-  self-cleaning; not run by `npm test`.
+  repository tests are opt-in (`RUN_DYNAMODB_TESTS=1`, with `DYNAMODB_ENDPOINT`
+  pointing at DynamoDB Local); the suite creates its own uuid-prefixed tables,
+  runs the shared repository contracts against the DynamoDB implementations, and
+  deletes those tables in `afterAll` regardless of outcome. Not run by `npm test`.
+- **DynamoDB `list` filtering:** the repository picks the most selective GSI for
+  the first present filter field (`eventId` → `subscriptionId` → `status`) and
+  applies any remaining filter fields in memory. Recovery queries sort the
+  filtered result by the relevant timing field so ordering does not depend on
+  GSI sort-key uniqueness.
 - **Idempotency:** `/events` does **not** accept client idempotency keys in v1.
   Event IDs are stable across retries. Delivery is at-least-once.
 - **AuthN/AuthZ:** out of scope; documented as an assumption.

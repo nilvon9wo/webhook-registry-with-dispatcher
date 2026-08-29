@@ -1,24 +1,47 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
-  Infrastructure for the Webhook Registry + Dispatcher technical challenge.
+  Infrastructure for the Webhook Registry + Dispatcher.
+
+  Three on-demand DynamoDB tables and the global secondary indexes required by
+  the application's access patterns (see docs/4 - architecture.md and
+  docs/9 - decisions.md). The application never talks to CloudFormation; it
+  reads the resulting table names from configuration
+  (DYNAMODB_SUBSCRIPTIONS_TABLE / DYNAMODB_EVENTS_TABLE / DYNAMODB_DELIVERIES_TABLE).
+
+Parameters:
+  ResourcePrefix:
+    Type: String
+    Default: webhook-registry
+    Description: Prefix for all table names, so the stack can be deployed more than once per account.
 
 Resources:
+  # Access patterns:
+  #   get subscription by id            -> GetItem(id)
+  #   list subscriptions                -> Scan
+  #   find subscriptions by event type  -> Query(eventType-index)
   SubscriptionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: webhook-registry-subscriptions
+      TableName: !Sub '${ResourcePrefix}-subscriptions'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
-        - AttributeName: eventType
-          AttributeType: S
         - AttributeName: id
+          AttributeType: S
+        - AttributeName: eventType
           AttributeType: S
       KeySchema:
-        - AttributeName: eventType
-          KeyType: HASH
         - AttributeName: id
-          KeyType: RANGE
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: eventType-index
+          KeySchema:
+            - AttributeName: eventType
+              KeyType: HASH
+            - AttributeName: id
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -27,10 +50,12 @@ Resources:
         - Key: Project
           Value: WebhookRegistry
 
+  # Access patterns:
+  #   get event by id -> GetItem(id)
   EventsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: webhook-registry-events
+      TableName: !Sub '${ResourcePrefix}-events'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: id
@@ -46,10 +71,20 @@ Resources:
         - Key: Project
           Value: WebhookRegistry
 
+  # Access patterns:
+  #   get delivery by id                 -> GetItem(id)
+  #   deliveries by event                -> Query(eventId-index)
+  #   deliveries by subscription         -> Query(subscriptionId-index)
+  #   deliveries by status / recovery    -> Query(status-index) + timing filter
+  #
+  # status-index sorts on createdAt (always present), NOT nextAttemptAt: a
+  # delivering/terminal delivery has nextAttemptAt = null and DynamoDB would
+  # omit it from an index keyed on that attribute - hiding exactly the stuck
+  # records recovery must find.
   DeliveriesTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: webhook-registry-deliveries
+      TableName: !Sub '${ResourcePrefix}-deliveries'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: id
@@ -57,6 +92,10 @@ Resources:
         - AttributeName: eventId
           AttributeType: S
         - AttributeName: subscriptionId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: createdAt
           AttributeType: S
       KeySchema:
         - AttributeName: id
@@ -66,7 +105,7 @@ Resources:
           KeySchema:
             - AttributeName: eventId
               KeyType: HASH
-            - AttributeName: id
+            - AttributeName: createdAt
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -74,7 +113,15 @@ Resources:
           KeySchema:
             - AttributeName: subscriptionId
               KeyType: HASH
-            - AttributeName: id
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: createdAt
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
@@ -88,13 +135,11 @@ Resources:
 
 Outputs:
   SubscriptionsTableName:
-    Description: DynamoDB table containing webhook subscriptions
+    Description: Value for DYNAMODB_SUBSCRIPTIONS_TABLE
     Value: !Ref SubscriptionsTable
-
   EventsTableName:
-    Description: DynamoDB table containing events
+    Description: Value for DYNAMODB_EVENTS_TABLE
     Value: !Ref EventsTable
-
   DeliveriesTableName:
-    Description: DynamoDB table containing delivery records
+    Description: Value for DYNAMODB_DELIVERIES_TABLE
     Value: !Ref DeliveriesTable

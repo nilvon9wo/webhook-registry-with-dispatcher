@@ -20,6 +20,12 @@ import {
   InMemoryEventRepository,
   InMemorySubscriptionRepository,
 } from './infrastructure/memory/in-memory-repositories.js';
+import { createDynamoDocumentClient } from './infrastructure/dynamodb/dynamodb-client.js';
+import {
+  DynamoDeliveryRepository,
+  DynamoEventRepository,
+  DynamoSubscriptionRepository,
+} from './infrastructure/dynamodb/dynamodb-repositories.js';
 import { createLogger, type Logger } from './infrastructure/logger.js';
 import { registerHealthRoute } from './http/handlers/health.js';
 import { registerSubscriptionRoutes } from './http/handlers/subscriptions.js';
@@ -49,10 +55,27 @@ export function buildRepositories(config: AppConfig, logger: Logger): Repositori
         events: new InMemoryEventRepository(),
         deliveries: new InMemoryDeliveryRepository(),
       };
-    case 'dynamodb':
-      throw new Error(
-        'DynamoDB persistence is not implemented yet (added in a later step). Set PERSISTENCE=memory.',
-      );
+    case 'dynamodb': {
+      logger.info('using DynamoDB persistence', {
+        region: config.aws.region,
+        endpoint: config.aws.dynamoEndpoint ?? 'aws',
+      });
+      const client = createDynamoDocumentClient({
+        region: config.aws.region,
+        endpoint: config.aws.dynamoEndpoint,
+      });
+      return {
+        subscriptions: new DynamoSubscriptionRepository({
+          client,
+          tableName: config.aws.tables.subscriptions,
+        }),
+        events: new DynamoEventRepository({ client, tableName: config.aws.tables.events }),
+        deliveries: new DynamoDeliveryRepository({
+          client,
+          tableName: config.aws.tables.deliveries,
+        }),
+      };
+    }
   }
 }
 

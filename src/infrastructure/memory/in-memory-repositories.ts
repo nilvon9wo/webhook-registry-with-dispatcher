@@ -19,6 +19,7 @@ import type {
   SubscriptionListFilter,
   SubscriptionRepository,
 } from '../../application/ports.js';
+import { applyLimit, byIsoAscending } from '../repository-support.js';
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -111,12 +112,4 @@ export class InMemoryDeliveryRepository implements DeliveryRepository {
       .sort(byIsoAscending((delivery) => delivery.lastAttemptAt));
     return applyLimit(stuck, limit).map(clone);
   }
-}
-
-function byIsoAscending<T>(pick: (item: T) => string | null): (a: T, b: T) => number {
-  return (a, b) => Date.parse(pick(a) ?? '') - Date.parse(pick(b) ?? '');
-}
-
-function applyLimit<T>(items: T[], limit: number | undefined): T[] {
-  return limit === undefined ? items : items.slice(0, Math.max(0, limit));
 }
