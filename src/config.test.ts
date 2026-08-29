@@ -223,17 +223,25 @@ describe('configWarnings', () => {
     expect(warnings.join(' ')).toMatch(/RECOVERY_INTERVAL_MS/);
   });
 
-  it('flags in-memory persistence only in production', () => {
+  it('does not flag in-memory persistence outside production', () => {
     // Arrange
-    const dev = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'development' });
-    const prod = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'production' });
+    const config = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'development' });
 
     // Act
-    const devWarnings = configWarnings(dev);
-    const prodWarnings = configWarnings(prod);
+    const warnings = configWarnings(config);
 
     // Assert
-    expect(devWarnings).toEqual([]);
-    expect(prodWarnings.join(' ')).toMatch(/PERSISTENCE=memory in production/);
+    expect(warnings).toEqual([]);
+  });
+
+  it('flags in-memory persistence in production', () => {
+    // Arrange
+    const config = loadConfig({ PERSISTENCE: 'memory', NODE_ENV: 'production' });
+
+    // Act
+    const warnings = configWarnings(config);
+
+    // Assert
+    expect(warnings.join(' ')).toMatch(/PERSISTENCE=memory in production/);
   });
 });

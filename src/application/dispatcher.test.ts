@@ -90,6 +90,16 @@ function newHarness(
   return { dispatcher, subscriptions, events, deliveries, webhookClient, scheduler };
 }
 
+/** The full logical act for a retry scenario: dispatch, then play every scheduled retry to completion. */
+async function dispatchToCompletion(
+  dispatcher: Dispatcher,
+  scheduler: ManualScheduler,
+  event = EVENT,
+): Promise<void> {
+  await dispatcher.dispatchEvent(event);
+  await drainScheduler(scheduler, dispatcher);
+}
+
 describe('Dispatcher.dispatchEvent', () => {
   it('creates no deliveries when nothing matches', async () => {
     // Arrange
@@ -268,7 +278,9 @@ describe('Dispatcher.dispatchEvent', () => {
       return { kind: 'success', statusCode: 200 };
     };
 
-    // Act
+    // Act — one coordinated operation: start the dispatch, let all the webhook
+    // calls begin, then release the gate. Peak concurrency can only be observed
+    // while the calls are held open, so these steps are inseparable.
     const done = dispatcher.dispatchEvent(EVENT);
     await new Promise((resolve) => setTimeout(resolve, 20));
     release();
@@ -301,16 +313,16 @@ describe('Dispatcher.dispatchEvent', () => {
 });
 
 describe('Dispatcher.dispatch (fire-and-forget)', () => {
-  it('returns synchronously and never throws, then settles via whenIdle', async () => {
+  it('runs the delivery in the background (dispatch returns void, whenIdle awaits it)', async () => {
     // Arrange
     const { dispatcher, subscriptions, deliveries } = newHarness();
     await subscriptions.save(aSubscription({ id: 'sub_a', eventType: 'order.created' }));
 
     // Act
     dispatcher.dispatch(EVENT);
-    await dispatcher.whenIdle();
 
     // Assert
+    await dispatcher.whenIdle();
     expect((await deliveries.list())[0]?.status).toBe('delivered');
   });
 
@@ -324,10 +336,9 @@ describe('Dispatcher.dispatch (fire-and-forget)', () => {
 
     // Act
     dispatcher.dispatch(EVENT);
-    const settle = dispatcher.whenIdle();
 
     // Assert
-    await expect(settle).resolves.toBeUndefined();
+    await expect(dispatcher.whenIdle()).resolves.toBeUndefined();
   });
 });
 
@@ -385,8 +396,7 @@ describe('Dispatcher retry behaviour', () => {
     };
 
     // Act
-    await dispatcher.dispatchEvent(EVENT);
-    await drainScheduler(scheduler, dispatcher);
+    await dispatchToCompletion(dispatcher, scheduler);
 
     // Assert
     const [delivery] = await deliveries.list();
@@ -407,8 +417,7 @@ describe('Dispatcher retry behaviour', () => {
     const storedBefore = await events.get(EVENT.id);
 
     // Act
-    await dispatcher.dispatchEvent(EVENT);
-    await drainScheduler(scheduler, dispatcher);
+    await dispatchToCompletion(dispatcher, scheduler);
 
     // Assert
     expect(webhookClient.requests).toHaveLength(4);
@@ -432,8 +441,7 @@ describe('Dispatcher retry behaviour', () => {
     webhookClient.responder = () => ({ kind: 'timeout' });
 
     // Act
-    await dispatcher.dispatchEvent(EVENT);
-    await drainScheduler(scheduler, dispatcher);
+    await dispatchToCompletion(dispatcher, scheduler);
 
     // Assert
     const [delivery] = await deliveries.list();
@@ -445,22 +453,16 @@ describe('Dispatcher retry behaviour', () => {
   });
 
   it('grows the backoff exponentially, capped at maxDelayMs', async () => {
-    // Arrange
+    // Arrange — 6 attempts allowed, so 5 retries are scheduled.
     const policy: RetryPolicy = { maxAttempts: 6, baseDelayMs: 500, maxDelayMs: 3000 };
     const { dispatcher, scheduler, webhookClient } = await withOneSubscription(policy);
     webhookClient.responder = () => ({ kind: 'network-error', message: 'ECONNRESET' });
-    const observedDelays: number[] = [];
 
     // Act
-    await dispatcher.dispatchEvent(EVENT);
-    for (let round = 0; round < 5 && scheduler.pendingCount > 0; round += 1) {
-      observedDelays.push(...scheduler.pendingDelays);
-      scheduler.runPending();
-      await dispatcher.whenIdle();
-    }
+    await dispatchToCompletion(dispatcher, scheduler);
 
     // Assert — 500, 1000, 2000, then capped at 3000, 3000
-    expect(observedDelays).toEqual([500, 1000, 2000, 3000, 3000]);
+    expect(scheduler.scheduledDelays).toEqual([500, 1000, 2000, 3000, 3000]);
   });
 
   it('isolates retries: a permanently-failing subscriber does not disturb a healthy one', async () => {
@@ -487,8 +489,7 @@ describe('Dispatcher retry behaviour', () => {
         : { kind: 'success', statusCode: 200 };
 
     // Act
-    await dispatcher.dispatchEvent(EVENT);
-    await drainScheduler(scheduler, dispatcher);
+    await dispatchToCompletion(dispatcher, scheduler);
 
     // Assert
     const statusOf = async (subscriptionId: string): Promise<string | undefined> =>
@@ -499,18 +500,18 @@ describe('Dispatcher retry behaviour', () => {
   });
 
   it('cancelScheduledRetries stops pending retries but leaves the delivery pending for recovery', async () => {
-    // Arrange
+    // Arrange — one attempt failed and a retry is now waiting out its backoff.
     const { dispatcher, deliveries, scheduler, webhookClient } = await withOneSubscription(RETRY_5);
     webhookClient.responder = () => ({ kind: 'http-error', statusCode: 503 });
     await dispatcher.dispatchEvent(EVENT);
 
     // Act
     dispatcher.cancelScheduledRetries();
+
+    // Assert — firing the scheduler now must do nothing
+    expect(dispatcher.scheduledRetryCount).toBe(0);
     scheduler.runPending();
     await dispatcher.whenIdle();
-
-    // Assert
-    expect(dispatcher.scheduledRetryCount).toBe(0);
     const [delivery] = await deliveries.list();
     expect(delivery?.status).toBe('pending');
     expect(delivery?.nextAttemptAt).not.toBeNull();

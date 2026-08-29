@@ -38,9 +38,9 @@ describe('InMemorySubscriptionRepository isolation', () => {
 
     // Act
     const firstList = await repository.list();
-    firstList.pop();
 
-    // Assert
+    // Assert — mutating the returned array must not affect the repository
+    firstList.pop();
     expect(await repository.list()).toHaveLength(1);
   });
 });

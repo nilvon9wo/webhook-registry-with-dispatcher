@@ -269,15 +269,16 @@ describe('RecoveryService.runOnce', () => {
       return original(before, limit);
     };
 
-    // Act
+    // Act — the two runs must overlap for the guard to be exercised: start the
+    // first (it blocks in the gated repo), then start the second while it is
+    // still in flight.
     const first = harness.recovery.runOnce();
     const second = await harness.recovery.runOnce();
-    release();
-    const firstSummary = await first;
 
     // Assert
     expect(second).toEqual({ reclaimed: 0, resumed: 0 });
-    expect(firstSummary).toEqual({ reclaimed: 0, resumed: 0 });
+    release();
+    expect(await first).toEqual({ reclaimed: 0, resumed: 0 });
   });
 });
 
@@ -290,27 +291,43 @@ describe('RecoveryService.start / stop', () => {
 
     // Act
     harness.recovery.start(0);
-    vi.advanceTimersByTime(600_000);
 
-    // Assert
+    // Assert — no timer, so advancing the clock changes nothing
+    vi.advanceTimersByTime(600_000);
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('runs a sweep on each interval until stopped', async () => {
+  it('runs a sweep on every interval while started', async () => {
     // Arrange
     vi.useFakeTimers();
     const harness = newHarness();
     const spy = vi
       .spyOn(harness.recovery, 'runOnce')
       .mockResolvedValue({ reclaimed: 0, resumed: 0 });
+    harness.recovery.start(1000);
 
     // Act
-    harness.recovery.start(1000);
     await vi.advanceTimersByTimeAsync(3500);
-    harness.recovery.stop();
-    await vi.advanceTimersByTimeAsync(5000);
 
     // Assert
     expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops sweeping after stop()', async () => {
+    // Arrange
+    vi.useFakeTimers();
+    const harness = newHarness();
+    const spy = vi
+      .spyOn(harness.recovery, 'runOnce')
+      .mockResolvedValue({ reclaimed: 0, resumed: 0 });
+    harness.recovery.start(1000);
+    await vi.advanceTimersByTimeAsync(2500);
+
+    // Act
+    harness.recovery.stop();
+
+    // Assert — no further sweeps however far the clock advances
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });

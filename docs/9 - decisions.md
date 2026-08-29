@@ -162,10 +162,10 @@ It is a living document, updated as implementation proceeds.
   (`PERSISTENCE=memory` in production, insecure target URLs, SSRF guard off,
   recovery disabled). Added `requests.http` and a README Configuration section.
 
-- **Test review (prompt 18):** the pyramid holds — ~210 unit / ~43 integration
-  (in-memory) + 17 opt-in DynamoDB contract / 6 E2E. Every `docs/5` checklist
-  item is covered. Gaps filled this pass: the `abandonDelivery` pure transition
-  (+ terminal-state guards for `abandonDelivery`/`reclaimStuck`); `DELETE
+- **Test review (prompt 18):** the pyramid holds — ~230 unit / ~45 integration
+  (in-memory) + 17 opt-in DynamoDB contract / 8 E2E. Every `docs/5` checklist
+  item is covered. Gaps filled: the `abandonDelivery` pure transition (+
+  terminal-state guards for `abandonDelivery`/`reclaimStuck`); `DELETE
   /subscriptions` prevents future deliveries **and** leaves historical delivery
   records intact (spec §3); `PUT` re-routes matching; the event id and payload
   stay identical across every retry attempt and the persisted event is untouched
@@ -173,6 +173,19 @@ It is a living document, updated as implementation proceeds.
   subscribers; a real slow subscriber past `WEBHOOK_TIMEOUT_MS` fails the
   delivery end-to-end. Added a `logger` build option so a test that deliberately
   triggers an error-level log can silence it.
+- **All tests pass, DynamoDB included.** `npm test` / `test:all` keep the
+  DynamoDB repository tests skipped (they need a real DynamoDB, and CI has none).
+  Verified with `RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge npm run
+  test:all` → **321 pass, 0 skipped**, throwaway tables torn down, no orphans.
+  This is part of the pre-packaging check (prompt 22).
+- **AAA standard tightened (`docs/5`):** the "Act is one statement" rule now
+  spells out that value-extraction, async synchronisation (`whenIdle` /
+  `waitFor`), and searching recorded output are Assert-phase; a multi-call
+  logical act (dispatch + drain the manual scheduler) is wrapped in a helper
+  (`dispatchToCompletion`); one behaviour per test (lifecycle checks split into a
+  test per step); genuinely coordinated acts (peak-concurrency, reentrancy) keep
+  their statements together with a one-line reason. All existing tests were
+  brought into line.
 
 ## 4. Explicitly out of scope for the four-hour build
 

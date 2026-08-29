@@ -24,9 +24,9 @@ describe('end-to-end: publish event -> webhook delivery', () => {
         type: 'order.created',
         data: { orderId: '12345' },
       });
-      const eventId = published.body.id;
 
       // Assert
+      const eventId = published.body.id;
       expect(published.status).toBe(202);
       await waitFor(
         async () => {
@@ -80,9 +80,9 @@ describe('end-to-end: publish event -> webhook delivery', () => {
 
       // Act
       const published = await app.request<CreatedId>('POST', '/events', { type: 'order.created' });
-      const eventId = published.body.id;
 
       // Assert
+      const eventId = published.body.id;
       await waitFor(
         async () => {
           const [delivery] = await app.application.repositories.deliveries.list({ eventId });
@@ -118,9 +118,9 @@ describe('end-to-end: publish event -> webhook delivery', () => {
 
       // Act
       const published = await app.request<CreatedId>('POST', '/events', { type: 'order.created' });
-      const eventId = published.body.id;
 
       // Assert
+      const eventId = published.body.id;
       await waitFor(async () => {
         const deliveries = await app.application.repositories.deliveries.list({ eventId });
         return deliveries.length === 2 && deliveries.every((d: Delivery) => d.completedAt !== null);
@@ -151,9 +151,9 @@ describe('end-to-end: publish event -> webhook delivery', () => {
 
       // Act
       const published = await app.request<CreatedId>('POST', '/events', { type: 'order.created' });
-      const eventId = published.body.id;
 
       // Assert
+      const eventId = published.body.id;
       await waitFor(async () => {
         const [delivery] = await app.application.repositories.deliveries.list({ eventId });
         return delivery?.status === 'failed';

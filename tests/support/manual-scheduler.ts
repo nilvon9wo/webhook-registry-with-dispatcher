@@ -13,10 +13,13 @@ interface Task {
 
 export class ManualScheduler implements Scheduler {
   private readonly tasks = new Map<object, Task>();
+  /** Every delay ever passed to `schedule`, in order — survives `runPending`. */
+  readonly scheduledDelays: number[] = [];
 
   schedule(callback: () => void, delayMs: number): () => void {
     const key = {};
     this.tasks.set(key, { callback, delayMs });
+    this.scheduledDelays.push(delayMs);
     return () => {
       this.tasks.delete(key);
     };

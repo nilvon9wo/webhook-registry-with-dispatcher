@@ -90,13 +90,26 @@ npm run test:all   # everything above
 npm run check      # format check + lint + typecheck + all tests
 ```
 
-Opt-in DynamoDB repository tests run the shared repository contract against real
-DynamoDB (create their own throwaway tables, tear them down afterwards):
+`npm test` / `npm run test:all` skip the DynamoDB repository tests (they need a
+real DynamoDB). Opt in with `RUN_DYNAMODB_TESTS=1`; the suite creates its own
+uuid-prefixed tables, runs the shared repository contract against them, and tears
+them down afterwards.
+
+Against **DynamoDB Local** (`docker run -p 8000:8000 amazon/dynamodb-local`):
 
 ```bash
 RUN_DYNAMODB_TESTS=1 DYNAMODB_ENDPOINT=http://localhost:8000 \
   AWS_REGION=eu-central-1 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
   npm run test:integration
+```
+
+Against **real AWS** (needs create/delete-table permission):
+
+```bash
+# bash
+RUN_DYNAMODB_TESTS=1 AWS_PROFILE=<profile> npm run test:all
+# PowerShell
+$env:RUN_DYNAMODB_TESTS=1; $env:AWS_PROFILE='<profile>'; npm run test:all
 ```
 
 ## API

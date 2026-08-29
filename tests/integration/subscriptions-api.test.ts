@@ -19,36 +19,60 @@ const VALID_BODY = {
   targetUrl: 'https://customer.example.com/webhooks/orders',
 };
 
+/** Creates a subscription and returns its id — the shared precondition for the lifecycle tests. */
+async function createSubscription(): Promise<string> {
+  const created = await app.request<{ id: string }>('POST', '/subscriptions', VALID_BODY);
+  return created.body.id;
+}
+
 describe('/subscriptions lifecycle', () => {
-  it('creates, reads, updates, and deletes a subscription', async () => {
-    // Arrange — a valid subscription body.
+  it('POST creates with 201, a sub_ id and a Location header', async () => {
+    // Arrange — the shared valid body.
 
     // Act
-    const created = await app.request('POST', '/subscriptions', VALID_BODY);
+    const created = await app.request<{ id: string }>('POST', '/subscriptions', VALID_BODY);
 
-    // Assert — creation
+    // Assert
     expect(created.status).toBe(201);
-    expect(created.headers.get('location')).toBe(
-      `/subscriptions/${(created.body as { id: string }).id}`,
-    );
-    const id = (created.body as { id: string }).id;
-    expect(id.startsWith('sub_')).toBe(true);
+    expect(created.body.id.startsWith('sub_')).toBe(true);
+    expect(created.headers.get('location')).toBe(`/subscriptions/${created.body.id}`);
+  });
 
-    // Act + Assert — read back
+  it('GET /{id} returns the created subscription', async () => {
+    // Arrange
+    const id = await createSubscription();
+
+    // Act
     const fetched = await app.request('GET', `/subscriptions/${id}`);
-    expect(fetched.status).toBe(200);
-    expect(fetched.body).toEqual(created.body);
 
-    // Act + Assert — replace
+    // Assert
+    expect(fetched.status).toBe(200);
+    expect(fetched.body).toMatchObject({ id, eventType: VALID_BODY.eventType });
+  });
+
+  it('PUT /{id} replaces the subscription and returns 200', async () => {
+    // Arrange
+    const id = await createSubscription();
+
+    // Act
     const replaced = await app.request('PUT', `/subscriptions/${id}`, {
       eventType: 'order.updated',
       targetUrl: 'https://customer.example.com/webhooks/v2',
     });
+
+    // Assert
     expect(replaced.status).toBe(200);
     expect(replaced.body).toMatchObject({ id, eventType: 'order.updated' });
+  });
 
-    // Act + Assert — delete, then confirm gone
+  it('DELETE /{id} returns 204 and the subscription is then gone', async () => {
+    // Arrange
+    const id = await createSubscription();
+
+    // Act
     const deleted = await app.request('DELETE', `/subscriptions/${id}`);
+
+    // Assert
     expect(deleted.status).toBe(204);
     expect((await app.request('GET', `/subscriptions/${id}`)).status).toBe(404);
   });
@@ -120,30 +144,39 @@ describe('/subscriptions lifecycle', () => {
 
   it('returns 400 for a non-JSON body', async () => {
     // Arrange
-    const raw = await fetch(`${app.baseUrl}/subscriptions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{ not json',
-    });
+    const send = (): Promise<Response> =>
+      fetch(`${app.baseUrl}/subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{ not json',
+      });
 
     // Act
-    const status = raw.status;
+    const response = await send();
 
     // Assert
-    expect(status).toBe(400);
+    expect(response.status).toBe(400);
   });
 
-  it('returns 404 for an unknown subscription and 405 for an unsupported method', async () => {
+  it('returns 404 for an unknown subscription id', async () => {
     // Arrange — nothing created.
 
     // Act
-    const missing = await app.request('GET', '/subscriptions/sub_nope');
-    const badMethod = await app.request('PATCH', '/subscriptions/sub_nope');
+    const response = await app.request('GET', '/subscriptions/sub_nope');
 
     // Assert
-    expect(missing.status).toBe(404);
-    expect(badMethod.status).toBe(405);
-    expect(badMethod.headers.get('allow')).toContain('GET');
+    expect(response.status).toBe(404);
+  });
+
+  it('returns 405 with an Allow header for an unsupported method on a known path', async () => {
+    // Arrange — nothing created.
+
+    // Act
+    const response = await app.request('PATCH', '/subscriptions/sub_nope');
+
+    // Assert
+    expect(response.status).toBe(405);
+    expect(response.headers.get('allow')).toContain('GET');
   });
 
   it('exposes a health endpoint', async () => {

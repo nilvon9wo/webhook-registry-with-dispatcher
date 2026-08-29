@@ -35,20 +35,38 @@ Rules:
    system under test. If a test needs no arrangement, still write the `// Arrange`
    comment and follow it with a short note explaining why none is required, e.g.
    `// Arrange — none: an empty environment is itself the input under test.`
-3. **Act is exactly one statement** — the single call to the behavior under test.
-   Any manipulation of the input before that call, or of the result after it,
-   belongs in Arrange or Assert respectively, never in Act. When the behavior
-   under test is expected to throw, use the `captureError` helper
-   (`tests/support/capture-error.ts`) so the Act step remains a single statement
-   and the thrown error is inspected in Assert.
-4. **Assert** holds one or more expectations on the observable result or on
+3. **Act is exactly one statement** — the single invocation of the behavior
+   under test.
+   - Manipulating the input *before* the call belongs in Arrange.
+   - Pulling a value *out of* the result (`const id = created.body.id`),
+     synchronising on async completion (`await dispatcher.whenIdle()`,
+     `await waitFor(...)`), and searching recorded output (`logger.lines.find(...)`)
+     all belong in **Assert** — that binding line is the first line of Assert,
+     not a second Act statement. Prefer inlining (`created.body.id`) when it does
+     not hurt readability.
+   - When the behavior under test spans more than one call because of a test
+     double (e.g. "dispatch, then let the manual scheduler play the retries
+     out"), wrap the whole logical operation in a helper so Act stays one
+     statement (`await dispatchToCompletion(harness, event)`).
+   - When the behavior under test is expected to throw, use `captureError` /
+     `captureRejection` (`tests/support/capture-error.ts`).
+   - Genuinely coordinated acts that cannot be a single call — measuring peak
+     concurrency by releasing a gate mid-flight, proving reentrancy by starting
+     two overlapping runs — keep the coordinating statements together under a
+     single `// Act` and add a one-line comment saying why they are inseparable.
+4. **One behaviour per test.** If a test needs to Act twice with different
+   inputs, or asserts on two unrelated outputs, split it (or use `it.each`).
+5. **Assert** holds one or more expectations on the observable result or on
    recorded side effects (never on private internals — see *Test Quality* below).
-5. **Sanity Check** — if an assertion must run *before* the Act (for example to
+6. **Sanity Check** — if an assertion must run *before* the Act (for example to
    prove a precondition, without which the test would be meaningless), mark it
    `// Sanity Check` and add a comment explaining why it is necessary or
    desirable.
 
 Parameterized cases (`it.each`) follow the same structure inside the case body.
+Scenario / lifecycle checks (create → read → update → delete) are split into one
+focused test per step, each arranging its own precondition — not one test with
+several act/assert cycles.
 
 Example:
 

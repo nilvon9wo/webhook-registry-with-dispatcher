@@ -18,79 +18,84 @@ afterEach(async () => {
   await recorder.close();
 });
 
-async function publishAndSettle(): Promise<string> {
-  const published = await app.request<WebhookEvent>('POST', '/events', { type: 'order.created' });
+async function createSubscription(eventType = 'order.created'): Promise<string> {
+  const created = await app.request<{ id: string }>('POST', '/subscriptions', {
+    eventType,
+    targetUrl: recorder.url,
+  });
+  return created.body.id;
+}
+
+/** Publishes an event and waits until any resulting deliveries have settled (or none appear). */
+async function publish(type = 'order.created'): Promise<string> {
+  const published = await app.request<WebhookEvent>('POST', '/events', { type });
   const eventId = published.body.id;
   await waitFor(async () => {
     const deliveries = await app.application.repositories.deliveries.list({ eventId });
     return deliveries.length > 0 && deliveries.every((d: Delivery) => d.completedAt !== null);
   }).catch(() => {
-    // No deliveries at all is a valid outcome for one of these tests.
+    // "no deliveries" is a valid outcome for the deleted-subscription case.
   });
   return eventId;
 }
 
-describe('DELETE /subscriptions/{id} semantics (spec section 3)', () => {
-  it('prevents future deliveries but leaves historical delivery records intact', async () => {
-    // Arrange — subscription receives one event, then is deleted.
-    const created = await app.request<{ id: string }>('POST', '/subscriptions', {
-      eventType: 'order.created',
-      targetUrl: recorder.url,
-    });
-    const subscriptionId = created.body.id;
-    const firstEventId = await publishAndSettle();
+const deliveriesFor = (filter: {
+  eventId?: string;
+  subscriptionId?: string;
+}): Promise<Delivery[]> => app.application.repositories.deliveries.list(filter);
 
-    const historical = await app.application.repositories.deliveries.list({ subscriptionId });
-    expect(historical).toHaveLength(1);
+describe('DELETE /subscriptions/{id} semantics (spec section 3)', () => {
+  it('prevents deliveries for events published after the deletion', async () => {
+    // Arrange — a subscription that has already received one event.
+    const subscriptionId = await createSubscription();
+    await publish();
 
     // Act
     const deleted = await app.request('DELETE', `/subscriptions/${subscriptionId}`);
-    const secondEventId = await publishAndSettle();
 
-    // Assert — no new delivery for the deleted subscription...
+    // Assert
     expect(deleted.status).toBe(204);
-    expect(await app.application.repositories.deliveries.list({ eventId: secondEventId })).toEqual(
-      [],
-    );
+    const laterEventId = await publish();
+    expect(await deliveriesFor({ eventId: laterEventId })).toEqual([]);
     expect(recorder.received).toHaveLength(1);
+  });
 
-    // ...and the historical record is unchanged.
-    const afterDelete = await app.application.repositories.deliveries.list({ subscriptionId });
-    expect(afterDelete).toHaveLength(1);
-    expect(afterDelete[0]).toEqual(historical[0]);
-    expect((afterDelete[0] as Delivery).eventId).toBe(firstEventId);
+  it('leaves historical delivery records untouched', async () => {
+    // Arrange — a subscription with one settled delivery on record.
+    const subscriptionId = await createSubscription();
+    await publish();
+    const [historical] = await deliveriesFor({ subscriptionId });
+
+    // Sanity Check — the historical delivery must exist for this test to mean anything.
+    expect(historical).toBeDefined();
+
+    // Act
+    await app.request('DELETE', `/subscriptions/${subscriptionId}`);
+
+    // Assert
+    const afterDelete = await deliveriesFor({ subscriptionId });
+    expect(afterDelete).toEqual([historical]);
   });
 });
 
 describe('PUT /subscriptions/{id} re-routes matching', () => {
   it('an event of the old type no longer matches after the eventType is replaced', async () => {
     // Arrange
-    const created = await app.request<{ id: string }>('POST', '/subscriptions', {
-      eventType: 'order.created',
-      targetUrl: recorder.url,
-    });
+    const subscriptionId = await createSubscription('order.created');
 
     // Act
-    await app.request('PUT', `/subscriptions/${created.body.id}`, {
+    await app.request('PUT', `/subscriptions/${subscriptionId}`, {
       eventType: 'order.updated',
       targetUrl: recorder.url,
     });
-    const oldTypeEvent = await app.request<WebhookEvent>('POST', '/events', {
-      type: 'order.created',
-    });
-    const newTypeEvent = await app.request<WebhookEvent>('POST', '/events', {
-      type: 'order.updated',
-    });
 
     // Assert
+    const oldTypeEventId = await publish('order.created');
+    const newTypeEventId = await publish('order.updated');
     await waitFor(async () => {
-      const deliveries = await app.application.repositories.deliveries.list({
-        eventId: newTypeEvent.body.id,
-      });
+      const deliveries = await deliveriesFor({ eventId: newTypeEventId });
       return deliveries.some((d: Delivery) => d.status === 'delivered');
     });
-    expect(
-      await app.application.repositories.deliveries.list({ eventId: oldTypeEvent.body.id }),
-    ).toEqual([]);
+    expect(await deliveriesFor({ eventId: oldTypeEventId })).toEqual([]);
   });
 });

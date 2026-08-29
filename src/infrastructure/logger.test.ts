@@ -18,6 +18,14 @@ function loggerCapturing(level: LogLevel): { logger: Logger; lines: Captured[] }
   return { logger, lines };
 }
 
+/** Emits one line at each of the four levels, using the level name as the message. */
+function emitAtEveryLevel(logger: Logger): void {
+  logger.debug('debug');
+  logger.info('info');
+  logger.warn('warn');
+  logger.error('error');
+}
+
 describe('createLogger', () => {
   it('emits a structured line with time, level, and message', () => {
     // Arrange
@@ -36,18 +44,20 @@ describe('createLogger', () => {
     });
   });
 
-  it('suppresses lines below the configured level', () => {
+  it.each([
+    { threshold: 'debug', emitted: ['debug', 'info', 'warn', 'error'] },
+    { threshold: 'info', emitted: ['info', 'warn', 'error'] },
+    { threshold: 'warn', emitted: ['warn', 'error'] },
+    { threshold: 'error', emitted: ['error'] },
+  ] as const)('at level "$threshold" emits only $emitted', ({ threshold, emitted }) => {
     // Arrange
-    const { logger, lines } = loggerCapturing('warn');
+    const { logger, lines } = loggerCapturing(threshold);
 
     // Act
-    logger.debug('d');
-    logger.info('i');
-    logger.warn('w');
-    logger.error('e');
+    emitAtEveryLevel(logger);
 
     // Assert
-    expect(lines.map((entry) => entry.line.level)).toEqual(['warn', 'error']);
+    expect(lines.map((entry) => entry.line.level)).toEqual(emitted);
   });
 
   it('child loggers merge their fields into every line', () => {
@@ -66,16 +76,15 @@ describe('createLogger', () => {
     });
   });
 
-  it('routes warn and error to the stderr sink classification', () => {
+  it('passes each line to the sink tagged with its own level', () => {
     // Arrange
     const { logger, lines } = loggerCapturing('debug');
 
     // Act
-    logger.info('i');
-    logger.error('e');
+    logger.error('error');
 
     // Assert
-    expect(lines.map((entry) => entry.level)).toEqual(['info', 'error']);
+    expect(lines[0]?.level).toBe('error');
   });
 });
 

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   createCapturingLogger,
+  type CapturedLine,
   type CapturingLogger,
 } from '../../tests/support/capturing-logger.js';
 import { aSubscription } from '../../tests/support/factories.js';
-import { ManualScheduler } from '../../tests/support/manual-scheduler.js';
+import { drainScheduler, ManualScheduler } from '../../tests/support/manual-scheduler.js';
 import { createEvent, type WebhookEvent } from '../domain/event.js';
 import type { IdGenerator, IdKind } from '../domain/ids.js';
 import type { AttemptOutcome, RetryPolicy } from '../domain/retry-policy.js';
@@ -44,7 +45,14 @@ const EVENT: WebhookEvent = createEvent(
   new Date('2026-08-28T10:15:00.000Z'),
 );
 
-async function runDispatch(outcome: AttemptOutcome): Promise<CapturingLogger> {
+interface ObservabilityHarness {
+  readonly logger: CapturingLogger;
+  readonly dispatcher: Dispatcher;
+  readonly scheduler: ManualScheduler;
+}
+
+/** Arrange: a one-subscription dispatcher wired to a capturing logger. */
+async function newObservabilityHarness(outcome: AttemptOutcome): Promise<ObservabilityHarness> {
   const logger = createCapturingLogger();
   const subscriptions = new InMemorySubscriptionRepository();
   const events = new InMemoryEventRepository();
@@ -72,39 +80,47 @@ async function runDispatch(outcome: AttemptOutcome): Promise<CapturingLogger> {
     config: { webhookTimeoutMs: 5000, retryPolicy: RETRY_2 },
     random: () => 1,
   });
-
-  await dispatcher.dispatchEvent(EVENT);
-  scheduler.runPending();
-  await dispatcher.whenIdle();
-  return logger;
+  return { logger, dispatcher, scheduler };
 }
+
+/** Act: dispatch the event and play every scheduled retry to completion. */
+async function dispatchAndLog(harness: ObservabilityHarness): Promise<void> {
+  await harness.dispatcher.dispatchEvent(EVENT);
+  await drainScheduler(harness.scheduler, harness.dispatcher);
+}
+
+const lineNamed = (lines: readonly CapturedLine[], message: string): CapturedLine | undefined =>
+  lines.find((line) => line.message === message);
 
 describe('dispatch logging — conventions', () => {
   it('names every line with a stable dotted identifier and a component', async () => {
     // Arrange
-    const logger = await runDispatch({ kind: 'http-error', statusCode: 503 });
+    const harness = await newObservabilityHarness({ kind: 'http-error', statusCode: 503 });
 
     // Act
-    const messages = logger.lines.map((line) => line.message);
+    await dispatchAndLog(harness);
 
     // Assert
-    for (const line of logger.lines) {
+    for (const line of harness.logger.lines) {
       expect(line.message).toMatch(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/);
       expect(line.fields.component).toBe('dispatcher');
     }
-    expect(messages).toEqual(
+    expect(harness.logger.lines.map((line) => line.message)).toEqual(
       expect.arrayContaining(['dispatch.started', 'delivery.retry_scheduled', 'delivery.failed']),
     );
   });
 
   it('tags every delivery-scoped line with the correlation fields', async () => {
     // Arrange — a delivery that fails once then is retried.
-    const logger = await runDispatch({ kind: 'http-error', statusCode: 503 });
+    const harness = await newObservabilityHarness({ kind: 'http-error', statusCode: 503 });
 
     // Act
-    const deliveryLines = logger.lines.filter((line) => line.fields.deliveryId !== undefined);
+    await dispatchAndLog(harness);
 
     // Assert
+    const deliveryLines = harness.logger.lines.filter(
+      (line) => line.fields.deliveryId !== undefined,
+    );
     expect(deliveryLines.length).toBeGreaterThan(0);
     for (const line of deliveryLines) {
       expect(line.fields).toMatchObject({
@@ -118,22 +134,31 @@ describe('dispatch logging — conventions', () => {
     expect(deliveryLines.some((line) => line.fields.attempt === 2)).toBe(true);
   });
 
-  it('uses the dictionary field names for outcome, backoff and retry limits', async () => {
+  it('logs delivery.retry_scheduled with the dictionary field names', async () => {
     // Arrange
-    const logger = await runDispatch({ kind: 'http-error', statusCode: 503 });
+    const harness = await newObservabilityHarness({ kind: 'http-error', statusCode: 503 });
 
     // Act
-    const retryLine = logger.lines.find((line) => line.message === 'delivery.retry_scheduled');
-    const failLine = logger.lines.find((line) => line.message === 'delivery.failed');
+    await dispatchAndLog(harness);
 
     // Assert
-    expect(retryLine?.fields).toMatchObject({
+    expect(lineNamed(harness.logger.lines, 'delivery.retry_scheduled')?.fields).toMatchObject({
       outcome: 'retryable',
       httpStatus: 503,
       backoffMs: 1,
       maxAttempts: 2,
     });
-    expect(failLine?.fields).toMatchObject({
+  });
+
+  it('logs delivery.failed with the dictionary field names and a reason code', async () => {
+    // Arrange
+    const harness = await newObservabilityHarness({ kind: 'http-error', statusCode: 503 });
+
+    // Act
+    await dispatchAndLog(harness);
+
+    // Assert
+    expect(lineNamed(harness.logger.lines, 'delivery.failed')?.fields).toMatchObject({
       outcome: 'retryable',
       reason: 'retry_budget_exhausted',
       attempt: 2,
@@ -145,12 +170,13 @@ describe('dispatch logging — conventions', () => {
 describe('dispatch logging — no sensitive data', () => {
   it('never writes the event payload or the full target URL into a log line', async () => {
     // Arrange
-    const logger = await runDispatch({ kind: 'success', statusCode: 200 });
+    const harness = await newObservabilityHarness({ kind: 'success', statusCode: 200 });
 
     // Act
-    const serialized = JSON.stringify(logger.lines);
+    await dispatchAndLog(harness);
 
     // Assert
+    const serialized = JSON.stringify(harness.logger.lines);
     expect(serialized).not.toContain('do-not-log-me');
     expect(serialized).not.toContain('/inbox'); // path of the target URL
     expect(serialized).toContain('hooks.customer.example'); // host only is fine
