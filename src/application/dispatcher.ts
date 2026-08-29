@@ -37,10 +37,10 @@ import {
   type RetryPolicy,
 } from '../domain/retry-policy.js';
 import type { Subscription } from '../domain/subscription.js';
-import { deliveryFields, outcomeFields } from '../infrastructure/log-fields.js';
-import { errorFields, LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
-import { SsrfBlockedError, type TargetUrlGuard } from '../infrastructure/ssrf-guard.js';
-import type { WebhookClient } from '../infrastructure/webhook-client.js';
+import { deliveryFields, outcomeFields } from './log-fields.js';
+import { errorFields, LOG_COMPONENTS, type Logger } from './logging.js';
+import { SsrfBlockedError, type TargetUrlGuard } from './target-url-guard.js';
+import type { WebhookClient } from './webhook-client.js';
 import type { Clock } from './clock.js';
 import type { EventDispatcher } from './event-service.js';
 import { findSubscriptionsForEvent } from './matching.js';

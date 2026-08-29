@@ -4,7 +4,7 @@ import { ValidationError } from '../domain/errors.js';
 import type { WebhookEvent } from '../domain/event.js';
 import type { IdGenerator, IdKind } from '../domain/ids.js';
 import { InMemoryEventRepository } from '../infrastructure/memory/in-memory-repositories.js';
-import { silentLogger } from '../infrastructure/logger.js';
+import { silentLogger } from './logging.js';
 import { fixedClock } from './clock.js';
 import { EventService, type EventDispatcher } from './event-service.js';
 import type { EventRepository } from './ports.js';

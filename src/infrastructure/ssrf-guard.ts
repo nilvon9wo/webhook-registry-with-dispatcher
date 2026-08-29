@@ -1,8 +1,7 @@
 /**
- * Basic SSRF guard for user-supplied webhook targets.
+ * DNS-resolving implementation of the {@link TargetUrlGuard} port.
  *
- * The dispatcher makes server-side HTTP requests to consumer-provided URLs. This
- * guard resolves the target host and rejects addresses that should never be a
+ * Resolves the target host and rejects addresses that should never be a
  * legitimate webhook: loopback, private (RFC 1918 / ULA / CGNAT), link-local,
  * unspecified, and the cloud metadata endpoint.
  *
@@ -15,28 +14,7 @@
 
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-
-export interface TargetUrlGuard {
-  /** Resolves if the URL's host is allowed; throws {@link SsrfBlockedError} otherwise. */
-  assertAllowed(rawUrl: string): Promise<void>;
-}
-
-export class SsrfBlockedError extends Error {
-  readonly host: string;
-  readonly reason: string;
-
-  constructor(host: string, reason: string) {
-    super(`webhook target host "${host}" is not allowed (${reason})`);
-    this.name = 'SsrfBlockedError';
-    this.host = host;
-    this.reason = reason;
-  }
-}
-
-/** No-op guard used when `SSRF_GUARD_ENABLED=false` and in unit tests. */
-export const allowAllTargetUrlGuard: TargetUrlGuard = {
-  assertAllowed: async () => {},
-};
+import { SsrfBlockedError, type TargetUrlGuard } from '../application/target-url-guard.js';
 
 export type AddressLookup = (hostname: string) => Promise<readonly { readonly address: string }[]>;
 

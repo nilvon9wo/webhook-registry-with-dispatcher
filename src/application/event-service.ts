@@ -12,8 +12,8 @@
 
 import { createEvent, parseEventInput, type WebhookEvent } from '../domain/event.js';
 import type { IdGenerator } from '../domain/ids.js';
-import { eventFields } from '../infrastructure/log-fields.js';
-import { LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
+import { eventFields } from './log-fields.js';
+import { LOG_COMPONENTS, type Logger } from './logging.js';
 import type { Clock } from './clock.js';
 import type { EventRepository } from './ports.js';
 

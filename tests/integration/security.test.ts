@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { silentLogger } from '../../src/infrastructure/logger.js';
+import { silentLogger } from '../../src/application/logging.js';
 import { startTestApp, type TestApp } from '../support/test-app.js';
 
 let app: TestApp;

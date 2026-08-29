@@ -16,8 +16,8 @@
  */
 
 import { reclaimStuck } from '../domain/delivery.js';
-import { deliveryFields } from '../infrastructure/log-fields.js';
-import { errorFields, LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
+import { deliveryFields } from './log-fields.js';
+import { errorFields, LOG_COMPONENTS, type Logger } from './logging.js';
 import type { Clock } from './clock.js';
 import type { DeliveryRepository } from './ports.js';
 

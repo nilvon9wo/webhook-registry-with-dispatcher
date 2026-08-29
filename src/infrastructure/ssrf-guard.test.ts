@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { captureRejection } from '../../tests/support/capture-error.js';
-import {
-  classifyAddress,
-  createDnsTargetUrlGuard,
-  SsrfBlockedError,
-  type AddressLookup,
-} from './ssrf-guard.js';
+import { SsrfBlockedError } from '../application/target-url-guard.js';
+import { classifyAddress, createDnsTargetUrlGuard, type AddressLookup } from './ssrf-guard.js';
 
 describe('classifyAddress', () => {
   it.each([

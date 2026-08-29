@@ -1,6 +1,6 @@
 /** A {@link Logger} that records every line for assertions in observability tests. */
 
-import type { LogFields, Logger } from '../../src/infrastructure/logger.js';
+import type { LogFields, Logger } from '../../src/application/logging.js';
 
 export interface CapturedLine {
   readonly level: 'debug' | 'info' | 'warn' | 'error';

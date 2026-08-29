@@ -15,7 +15,7 @@ import {
   type Subscription,
   type SubscriptionInput,
 } from '../domain/subscription.js';
-import { SsrfBlockedError, type TargetUrlGuard } from '../infrastructure/ssrf-guard.js';
+import { SsrfBlockedError, type TargetUrlGuard } from './target-url-guard.js';
 import type { Clock } from './clock.js';
 import { ResourceNotFoundError } from './errors.js';
 import type { SubscriptionListFilter, SubscriptionRepository } from './ports.js';

@@ -7,7 +7,7 @@
  */
 
 import * as http from 'node:http';
-import { errorFields, LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
+import { errorFields, LOG_COMPONENTS, type Logger } from '../application/logging.js';
 import { errorResponse, toErrorResponse } from './problem.js';
 import type { HandlerResult, RequestContext, Router } from './router.js';
 

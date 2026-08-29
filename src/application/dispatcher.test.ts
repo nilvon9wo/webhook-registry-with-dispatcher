@@ -10,13 +10,13 @@ import {
   InMemoryEventRepository,
   InMemorySubscriptionRepository,
 } from '../infrastructure/memory/in-memory-repositories.js';
-import { silentLogger } from '../infrastructure/logger.js';
+import { silentLogger } from './logging.js';
 import {
   allowAllTargetUrlGuard,
   SsrfBlockedError,
   type TargetUrlGuard,
-} from '../infrastructure/ssrf-guard.js';
-import type { WebhookClient, WebhookRequest } from '../infrastructure/webhook-client.js';
+} from './target-url-guard.js';
+import type { WebhookClient, WebhookRequest } from './webhook-client.js';
 import { fixedClock } from './clock.js';
 import { Dispatcher } from './dispatcher.js';
 

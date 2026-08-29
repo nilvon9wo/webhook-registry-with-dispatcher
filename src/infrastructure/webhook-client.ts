@@ -10,19 +10,8 @@
  * as a permanent delivery failure.
  */
 
-import type { WebhookDeliveryPayload } from '../domain/event.js';
 import type { AttemptOutcome } from '../domain/retry-policy.js';
-
-export interface WebhookRequest {
-  readonly url: string;
-  readonly payload: WebhookDeliveryPayload;
-  readonly headers: Readonly<Record<string, string>>;
-  readonly timeoutMs: number;
-}
-
-export interface WebhookClient {
-  send(request: WebhookRequest): Promise<AttemptOutcome>;
-}
+import type { WebhookClient, WebhookRequest } from '../application/webhook-client.js';
 
 export function createHttpWebhookClient(): WebhookClient {
   return {

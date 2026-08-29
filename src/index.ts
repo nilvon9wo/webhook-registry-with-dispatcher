@@ -6,7 +6,7 @@
 import { buildApplication } from './container.js';
 import type { AppConfig } from './config.js';
 import { ConfigError, configSummary, configWarnings, loadConfig } from './config.js';
-import { errorFields, LOG_COMPONENTS } from './infrastructure/logger.js';
+import { errorFields, LOG_COMPONENTS } from './application/logging.js';
 
 function loadConfigOrExit(): AppConfig | undefined {
   try {

@@ -8,7 +8,7 @@ import type { Delivery } from '../domain/delivery.js';
 import type { WebhookEvent } from '../domain/event.js';
 import { classifyOutcome, type AttemptOutcome } from '../domain/retry-policy.js';
 import type { Subscription } from '../domain/subscription.js';
-import type { LogFields } from './logger.js';
+import type { LogFields } from './logging.js';
 
 /** Hostname of a URL for logging — never the full URL (its path may be a secret). */
 export function targetHost(rawUrl: string): string {

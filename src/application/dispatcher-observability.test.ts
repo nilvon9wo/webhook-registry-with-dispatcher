@@ -14,8 +14,8 @@ import {
   InMemoryEventRepository,
   InMemorySubscriptionRepository,
 } from '../infrastructure/memory/in-memory-repositories.js';
-import { allowAllTargetUrlGuard } from '../infrastructure/ssrf-guard.js';
-import type { WebhookClient, WebhookRequest } from '../infrastructure/webhook-client.js';
+import { allowAllTargetUrlGuard } from './target-url-guard.js';
+import type { WebhookClient, WebhookRequest } from './webhook-client.js';
 import { fixedClock } from './clock.js';
 import { Dispatcher } from './dispatcher.js';
 

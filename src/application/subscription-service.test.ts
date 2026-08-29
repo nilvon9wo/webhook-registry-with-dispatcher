@@ -3,11 +3,8 @@ import { captureRejection } from '../../tests/support/capture-error.js';
 import { ValidationError } from '../domain/errors.js';
 import type { IdGenerator, IdKind } from '../domain/ids.js';
 import { InMemorySubscriptionRepository } from '../infrastructure/memory/in-memory-repositories.js';
-import {
-  allowAllTargetUrlGuard,
-  createDnsTargetUrlGuard,
-  SsrfBlockedError,
-} from '../infrastructure/ssrf-guard.js';
+import { createDnsTargetUrlGuard } from '../infrastructure/ssrf-guard.js';
+import { allowAllTargetUrlGuard, SsrfBlockedError } from './target-url-guard.js';
 import { fixedClock } from './clock.js';
 import { ResourceNotFoundError } from './errors.js';
 import { SubscriptionService } from './subscription-service.js';

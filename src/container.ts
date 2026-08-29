@@ -19,13 +19,12 @@ import { Dispatcher } from './application/dispatcher.js';
 import { RecoveryService } from './application/recovery.js';
 import { realScheduler, type Scheduler } from './application/scheduler.js';
 import { systemClock, type Clock } from './application/clock.js';
+import { LOG_COMPONENTS, type Logger } from './application/logging.js';
+import type { WebhookClient } from './application/webhook-client.js';
+import { allowAllTargetUrlGuard, type TargetUrlGuard } from './application/target-url-guard.js';
 import { randomIdGenerator } from './domain/ids.js';
-import { createHttpWebhookClient, type WebhookClient } from './infrastructure/webhook-client.js';
-import {
-  allowAllTargetUrlGuard,
-  createDnsTargetUrlGuard,
-  type TargetUrlGuard,
-} from './infrastructure/ssrf-guard.js';
+import { createHttpWebhookClient } from './infrastructure/webhook-client.js';
+import { createDnsTargetUrlGuard } from './infrastructure/ssrf-guard.js';
 import {
   InMemoryDeliveryRepository,
   InMemoryEventRepository,
@@ -37,7 +36,7 @@ import {
   DynamoEventRepository,
   DynamoSubscriptionRepository,
 } from './infrastructure/dynamodb/dynamodb-repositories.js';
-import { createLogger, LOG_COMPONENTS, type Logger } from './infrastructure/logger.js';
+import { createLogger } from './infrastructure/logger.js';
 import { registerHealthRoute } from './http/handlers/health.js';
 import { registerEventRoutes } from './http/handlers/events.js';
 import { registerSubscriptionRoutes } from './http/handlers/subscriptions.js';
