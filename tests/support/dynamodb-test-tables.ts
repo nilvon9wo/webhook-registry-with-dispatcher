@@ -87,13 +87,24 @@ export async function createTestTables(
   }
 }
 
+/**
+ * Deletes every test table. Idempotent: a table that is already gone (e.g. after
+ * a partial `createTestTables` failure) is skipped rather than throwing, so this
+ * is safe to call unconditionally from `afterAll`.
+ */
 export async function deleteTestTables(
   client: DynamoDBClient,
   names: DynamoTableNames,
 ): Promise<void> {
   for (const tableName of Object.values(names)) {
-    await client.send(new DeleteTableCommand({ TableName: tableName }));
-    await waitUntilTableNotExists({ client, maxWaitTime: 60 }, { TableName: tableName });
+    try {
+      await client.send(new DeleteTableCommand({ TableName: tableName }));
+      await waitUntilTableNotExists({ client, maxWaitTime: 60 }, { TableName: tableName });
+    } catch (error) {
+      if ((error as { name?: string }).name !== 'ResourceNotFoundException') {
+        throw error;
+      }
+    }
   }
 }
 
