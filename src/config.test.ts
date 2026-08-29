@@ -14,6 +14,7 @@ describe('loadConfig', () => {
       nodeEnv: 'development',
       port: 3000,
       logLevel: 'info',
+      logFormat: 'auto',
       persistence: 'memory',
       aws: {
         region: 'eu-central-1',
@@ -117,6 +118,30 @@ describe('loadConfig', () => {
     // Assert
     expect((error as ConfigError).problems).toContainEqual(
       expect.stringContaining('PORT must be <= 65535'),
+    );
+  });
+
+  it('reads the LOG_FORMAT setting', () => {
+    // Arrange
+    const env = { LOG_FORMAT: 'pretty' };
+
+    // Act
+    const config = loadConfig(env);
+
+    // Assert
+    expect(config.logFormat).toBe('pretty');
+  });
+
+  it('rejects an unknown log format', () => {
+    // Arrange
+    const env = { LOG_FORMAT: 'fancy' };
+
+    // Act
+    const error = captureError(() => loadConfig(env));
+
+    // Assert
+    expect((error as ConfigError).problems).toContainEqual(
+      expect.stringContaining('LOG_FORMAT must be one of'),
     );
   });
 

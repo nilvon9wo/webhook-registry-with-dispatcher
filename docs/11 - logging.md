@@ -35,6 +35,40 @@ The logger is deliberately tiny (no `pino`/`winston`) — the value is in the
 - **`time`**, **`level`** — added by the logger.
 - Everything else is a field from the dictionary below.
 
+## Rendering (`LOG_FORMAT`)
+
+The JSON line above is the **contract** — it is what any log processor parses.
+For a human watching a local terminal it is also hard to scan: monochrome, and
+led by a timestamp that is rarely what you are looking for.
+
+`LOG_FORMAT` selects the rendering:
+
+| Value | Result |
+| --- | --- |
+| `auto` *(default)* | `pretty` when stdout is a TTY, `json` otherwise — so `npm run dev` in a terminal is readable, and the same binary piped to a file or a log collector emits JSON. |
+| `json` | Always the JSON line. Use in production / when shipping logs. |
+| `pretty` | Always the coloured line. |
+
+The pretty line reorders the same data for reading:
+
+```
+INFO   delivery.succeeded  deliveryId=del_1 attempt=1 httpStatus=200  dispatcher 07:19:45.922
+WARN   delivery.retry_scheduled  deliveryId=del_2 attempt=2 backoffMs=2000  dispatcher 07:19:46.101
+ERROR  recovery.sweep.failed  error="connect ECONNREFUSED"  recovery 07:19:47.550
+```
+
+- Level first, **colour-coded** (`DEBUG` dim, `INFO` cyan, `WARN` yellow,
+  `ERROR` red), uppercased and padded so columns line up.
+- Then the `message`, then the fields as `key=value`.
+- `component` and a **time-of-day** stamp (no date) are pushed to the end, dimmed.
+- Colour: on for an explicit `LOG_FORMAT=pretty` (so it still works when the TTY
+  check is unreliable — e.g. stdout behind `tsx watch`), and for `auto` when
+  stdout is a TTY. `NO_COLOR` disables it in all cases; `FORCE_COLOR` forces it.
+
+`pretty` is a convenience of the **built-in sink only**. Supplying a custom
+`write` to `createLogger` (tests, or a future transport) always receives the
+JSON line, so structured consumers are unaffected by this setting.
+
 ## Correlation
 
 `logger.child(fields)` merges `fields` into every subsequent line. The dispatch

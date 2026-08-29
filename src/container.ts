@@ -130,7 +130,8 @@ export function buildApplication(
   config: AppConfig,
   options: BuildApplicationOptions = {},
 ): Application {
-  const logger = options.logger ?? createLogger({ level: config.logLevel });
+  const logger =
+    options.logger ?? createLogger({ level: config.logLevel, format: config.logFormat });
   const clock = options.clock ?? systemClock;
   const repositories = buildRepositories(config, logger);
 

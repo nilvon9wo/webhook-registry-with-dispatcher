@@ -15,6 +15,7 @@ export interface AppConfig {
   readonly nodeEnv: string;
   readonly port: number;
   readonly logLevel: LogLevel;
+  readonly logFormat: LogFormat;
 
   readonly persistence: PersistenceMode;
   readonly aws: {
@@ -70,6 +71,14 @@ export interface AppConfig {
 export const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+/**
+ * Log rendering. `json` is the machine contract (one JSON object per line);
+ * `pretty` is a coloured, human-readable line for a local terminal; `auto`
+ * picks `pretty` when stdout is a TTY and `json` otherwise.
+ */
+export const LOG_FORMATS = ['auto', 'json', 'pretty'] as const;
+export type LogFormat = (typeof LOG_FORMATS)[number];
+
 export class ConfigError extends Error {
   readonly problems: readonly string[];
 
@@ -84,6 +93,7 @@ const DEFAULTS = {
   NODE_ENV: 'development',
   PORT: 3000,
   LOG_LEVEL: 'info',
+  LOG_FORMAT: 'auto',
   PERSISTENCE: 'memory',
   AWS_REGION: 'eu-central-1',
   DYNAMODB_SUBSCRIPTIONS_TABLE: 'webhook-registry-subscriptions',
@@ -109,6 +119,7 @@ export function loadConfig(env: EnvRecord = process.env): AppConfig {
   const nodeEnv = env.NODE_ENV?.trim() || DEFAULTS.NODE_ENV;
   const port = readInt(env, 'PORT', DEFAULTS.PORT, problems, { min: 1, max: 65_535 });
   const logLevel = readEnum(env, 'LOG_LEVEL', DEFAULTS.LOG_LEVEL, LOG_LEVELS, problems);
+  const logFormat = readEnum(env, 'LOG_FORMAT', DEFAULTS.LOG_FORMAT, LOG_FORMATS, problems);
   const persistence = readEnum(
     env,
     'PERSISTENCE',
@@ -121,6 +132,7 @@ export function loadConfig(env: EnvRecord = process.env): AppConfig {
     nodeEnv,
     port,
     logLevel,
+    logFormat,
     persistence,
     aws: {
       region: env.AWS_REGION?.trim() || DEFAULTS.AWS_REGION,
@@ -208,6 +220,7 @@ export function configSummary(config: AppConfig): Record<string, unknown> {
     nodeEnv: config.nodeEnv,
     port: config.port,
     logLevel: config.logLevel,
+    logFormat: config.logFormat,
     persistence: config.persistence,
     awsRegion: config.aws.region,
     dynamoEndpoint: config.aws.dynamoEndpoint ?? null,

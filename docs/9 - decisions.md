@@ -153,6 +153,15 @@ It is a living document, updated as implementation proceeds.
   target URL, or a credential (asserted by test). `index.ts` logs
   `process.unhandled_rejection` / `process.uncaught_exception`. A
   per-HTTP-request id is a noted future addition.
+  - **Production delivery of logs + rendering (prompt 21 follow-up):** stdout is
+    the only sink — a deliberate twelve-factor choice; the alternatives (config
+    file sink, `pino` swap, full pipeline) with effort/cost/performance
+    estimates are in `docs/11 - logging.md`. Added a `LOG_FORMAT` env
+    (`auto` \| `json` \| `pretty`, default `auto`): `pretty` renders one
+    colour-coded line per entry (level first and coloured, `WARN` yellow /
+    `ERROR` red, time-of-day pushed to the end) for a local terminal; `auto`
+    uses it only when stdout is a TTY, so piped/production output stays JSON. It
+    is a built-in-sink convenience — a custom `write` always gets the JSON line.
 
 - **Configuration review (prompt 15):** every operational setting in the spec §12
   list is an env var with a safe default and aggregated validation

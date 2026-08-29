@@ -78,13 +78,17 @@ Make the subscriber misbehave by adding query params to the target URL:
 npm run dev
 ```
 
-Watch this terminal — it logs one structured JSON line per event
-(`event.accepted`, `dispatch.started`, `delivery.succeeded`,
-`delivery.retry_scheduled`, `delivery.failed`, `recovery.sweep.completed`, …).
+Watch this terminal. With `LOG_FORMAT=pretty` (set in the `.env` above) each
+entry is one coloured line — `LEVEL  message  key=value …  component time` —
+with **`WARN` in yellow and `ERROR` in red** so they stand out. Key events:
+`event.accepted`, `dispatch.started`, `delivery.succeeded`,
+`delivery.retry_scheduled`, `delivery.failed`, `recovery.sweep.completed`.
+(Drop `LOG_FORMAT`, or set it to `json`, to see the raw structured line that a
+log processor would consume.)
 
 At startup it prints `config.loaded` and a `config.warning` line for each risky
-setting — you should see warnings for the SSRF guard being off and insecure URLs
-being allowed. That is expected for this session.
+setting — you should see **yellow** warnings for the SSRF guard being off and
+insecure URLs being allowed. That is expected for this session.
 
 ### 2.4 Browser — Swagger UI
 

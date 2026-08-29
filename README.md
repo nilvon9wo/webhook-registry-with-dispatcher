@@ -107,27 +107,28 @@ Every operational setting is an environment variable with a safe default — see
 present. Invalid values are reported **together** at startup and the process
 exits non-zero.
 
-| Variable                        | Default                          | Purpose                                                                    |
-| ------------------------------- | -------------------------------- | -------------------------------------------------------------------------- |
-| `NODE_ENV`                      | `development`                    | Environment name (affects startup warnings only)                           |
-| `PORT`                          | `3000`                           | HTTP server port                                                           |
-| `LOG_LEVEL`                     | `info`                           | `debug` \| `info` \| `warn` \| `error`                                     |
-| `PERSISTENCE`                   | `memory`                         | `memory` (in-process) or `dynamodb`                                        |
-| `AWS_REGION`                    | `eu-central-1`                   | Region for the DynamoDB client                                             |
-| `DYNAMODB_ENDPOINT`             | _(unset)_                        | Override endpoint, e.g. `http://localhost:8000` for DynamoDB Local         |
-| `DYNAMODB_SUBSCRIPTIONS_TABLE`  | `webhook-registry-subscriptions` | Table name                                                                 |
-| `DYNAMODB_EVENTS_TABLE`         | `webhook-registry-events`        | Table name                                                                 |
-| `DYNAMODB_DELIVERIES_TABLE`     | `webhook-registry-deliveries`    | Table name                                                                 |
-| `MAX_REQUEST_BODY_BYTES`        | `1048576`                        | Request body size limit (`413` above it)                                   |
-| `WEBHOOK_TIMEOUT_MS`            | `5000`                           | Per-attempt outbound webhook timeout                                       |
-| `MAX_DELIVERY_ATTEMPTS`         | `5`                              | Total attempts per delivery (initial + retries)                            |
-| `RETRY_BASE_DELAY_MS`           | `500`                            | Exponential-backoff base delay                                             |
-| `RETRY_MAX_DELAY_MS`            | `30000`                          | Cap on any single backoff delay                                            |
-| `RECOVERY_INTERVAL_MS`          | `60000`                          | Recovery sweep interval; `0` disables it                                   |
-| `STUCK_DELIVERING_THRESHOLD_MS` | `60000`                          | Age after which a `delivering` delivery is treated as abandoned            |
-| `RECOVERY_BATCH_LIMIT`          | `100`                            | Max deliveries handled per sweep                                           |
-| `ALLOW_INSECURE_TARGET_URLS`    | `false`                          | Allow `http://` webhook targets (needed for local E2E)                     |
-| `SSRF_GUARD_ENABLED`            | `true`                           | Reject targets resolving to loopback/private/link-local/metadata addresses |
+| Variable                        | Default                          | Purpose                                                                                                                      |
+| ------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                      | `development`                    | Environment name (affects startup warnings only)                                                                             |
+| `PORT`                          | `3000`                           | HTTP server port                                                                                                             |
+| `LOG_LEVEL`                     | `info`                           | `debug` \| `info` \| `warn` \| `error`                                                                                       |
+| `LOG_FORMAT`                    | `auto`                           | `auto` (pretty on a TTY, JSON if piped) \| `json` \| `pretty` — see [docs/11](docs/11%20-%20logging.md#rendering-log_format) |
+| `PERSISTENCE`                   | `memory`                         | `memory` (in-process) or `dynamodb`                                                                                          |
+| `AWS_REGION`                    | `eu-central-1`                   | Region for the DynamoDB client                                                                                               |
+| `DYNAMODB_ENDPOINT`             | _(unset)_                        | Override endpoint, e.g. `http://localhost:8000` for DynamoDB Local                                                           |
+| `DYNAMODB_SUBSCRIPTIONS_TABLE`  | `webhook-registry-subscriptions` | Table name                                                                                                                   |
+| `DYNAMODB_EVENTS_TABLE`         | `webhook-registry-events`        | Table name                                                                                                                   |
+| `DYNAMODB_DELIVERIES_TABLE`     | `webhook-registry-deliveries`    | Table name                                                                                                                   |
+| `MAX_REQUEST_BODY_BYTES`        | `1048576`                        | Request body size limit (`413` above it)                                                                                     |
+| `WEBHOOK_TIMEOUT_MS`            | `5000`                           | Per-attempt outbound webhook timeout                                                                                         |
+| `MAX_DELIVERY_ATTEMPTS`         | `5`                              | Total attempts per delivery (initial + retries)                                                                              |
+| `RETRY_BASE_DELAY_MS`           | `500`                            | Exponential-backoff base delay                                                                                               |
+| `RETRY_MAX_DELAY_MS`            | `30000`                          | Cap on any single backoff delay                                                                                              |
+| `RECOVERY_INTERVAL_MS`          | `60000`                          | Recovery sweep interval; `0` disables it                                                                                     |
+| `STUCK_DELIVERING_THRESHOLD_MS` | `60000`                          | Age after which a `delivering` delivery is treated as abandoned                                                              |
+| `RECOVERY_BATCH_LIMIT`          | `100`                            | Max deliveries handled per sweep                                                                                             |
+| `ALLOW_INSECURE_TARGET_URLS`    | `false`                          | Allow `http://` webhook targets (needed for local E2E)                                                                       |
+| `SSRF_GUARD_ENABLED`            | `true`                           | Reject targets resolving to loopback/private/link-local/metadata addresses                                                   |
 
 **No secrets are read from configuration.** AWS credentials come only from the
 SDK provider chain (environment, SSO, shared config, instance/task role).

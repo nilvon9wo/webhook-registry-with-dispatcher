@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { LogLevel } from '../config.js';
 import type { Logger } from '../application/logging.js';
 import { createLogger } from './logger.js';
@@ -86,5 +86,73 @@ describe('createLogger', () => {
 
     // Assert
     expect(lines[0]?.level).toBe('error');
+  });
+});
+
+describe('createLogger pretty format', () => {
+  const ANSI_PATTERN = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+
+  /** Captures what the default sink writes (stdout + stderr), colour codes removed. */
+  function capturePretty(emit: (logger: Logger) => void): string {
+    const written: string[] = [];
+    const sink = ((chunk: unknown): boolean => {
+      written.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    const outSpy = vi.spyOn(process.stdout, 'write').mockImplementation(sink);
+    const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(sink);
+    try {
+      emit(
+        createLogger({
+          level: 'debug',
+          format: 'pretty',
+          now: () => new Date('2026-08-28T10:00:00.000Z'),
+        }),
+      );
+    } finally {
+      outSpy.mockRestore();
+      errSpy.mockRestore();
+    }
+    return written.join('').replace(ANSI_PATTERN, '').trimEnd();
+  }
+
+  it('renders one line as: LEVEL, message, then key=value fields', () => {
+    // Arrange — the emit callback is the input under test.
+    const emit = (logger: Logger): void => {
+      logger.child({ component: 'dispatcher' }).info('delivery.succeeded', {
+        deliveryId: 'del_1',
+        attempt: 1,
+      });
+    };
+
+    // Act
+    const line = capturePretty(emit);
+
+    // Assert
+    expect(line).toBe(
+      'INFO   delivery.succeeded  deliveryId=del_1 attempt=1  dispatcher 10:00:00.000',
+    );
+  });
+
+  it('puts the timestamp last, not first', () => {
+    // Arrange
+    const emit = (logger: Logger): void => logger.warn('config.warning', { detail: 'x' });
+
+    // Act
+    const line = capturePretty(emit);
+
+    // Assert
+    expect(line.indexOf('10:00:00.000')).toBeGreaterThan(line.indexOf('config.warning'));
+  });
+
+  it('uppercases and pads the level so columns align', () => {
+    // Arrange
+    const emit = (logger: Logger): void => logger.error('boom');
+
+    // Act
+    const line = capturePretty(emit);
+
+    // Assert
+    expect(line.startsWith('ERROR  boom')).toBe(true);
   });
 });
