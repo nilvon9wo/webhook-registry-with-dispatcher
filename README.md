@@ -349,6 +349,10 @@ Full detail, with effort/risk estimates, in
   Production: transactional event + delivery-stub write, or an outbox.
 - **Recovery is single-instance.** The reentrancy guard is in-process; multiple
   instances would each sweep. Production: a durable queue or a lease.
+- **Logs go to stdout only.** Structured JSON, captured for free by any modern
+  runtime (K8s, ECS, Lambda, Cloud Run, systemd). Options for going further —
+  a `pino` swap, a shipping pipeline — with time/cost/performance estimates in
+  [docs/11 — Getting logs off the box](docs/11%20-%20logging.md#getting-logs-off-the-box-production).
 
 ## Status
 

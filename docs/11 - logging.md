@@ -8,7 +8,9 @@ There is no free-form log text. Every line can be parsed, filtered, grouped, and
 alerted on by field, without regexes over prose.
 
 The logger is deliberately tiny (no `pino`/`winston`) — the value is in the
-*conventions* below, not the transport.
+*conventions* below, not the transport. Whether stdout-only is
+"production-ready", and what it would cost to go further, is covered in
+[Getting logs off the box](#getting-logs-off-the-box-production).
 
 ## Line shape
 
@@ -113,3 +115,83 @@ same way. New logging code must reuse these names.
 | `recovery.sweep.completed` | info | recovery | a sweep did something (`reclaimedCount` / `resumedCount`) |
 | `recovery.sweep.failed` | error | recovery | a sweep threw |
 | `recovery.delivery.reclaimed` | debug | recovery | a stuck delivery returned to `pending` |
+
+## Getting logs off the box (production)
+
+The spec (§15) asks the implementation to *demonstrate awareness* of
+observability, not to ship a log-aggregation pipeline. This section is that
+awareness written down: why stdout-only is a legitimate production choice, where
+it stops being enough, and what each step further would cost in time, money, and
+latency.
+
+### Why stdout-only is a design, not a shortcut
+
+This follows the [twelve-factor](https://12factor.net/logs) rule: **the process
+writes its event stream, unbuffered, to stdout/stderr and knows nothing about
+routing or storage.** The runtime platform captures the stream and a collector
+ships it onward. Because our lines are already structured JSON, the collector
+and backend parse fields directly — no grok patterns, no regex-over-prose.
+
+| Platform | Captures stdout via | Lands in |
+| --- | --- | --- |
+| Kubernetes | kubelet → node log files | `kubectl logs`; Fluent Bit / Vector / Datadog Agent → Loki / Elastic / Datadog / Splunk |
+| AWS ECS / Fargate | `awslogs` or `awsfirelens` log driver | CloudWatch Logs, or Firelens → third party |
+| AWS Lambda | runtime | CloudWatch Logs (automatic) |
+| Google Cloud Run / Azure Container Apps | runtime | Cloud Logging / Log Analytics (automatic) |
+| Plain VM + systemd | journald | `journalctl`; optional agent → backend |
+| Local `docker run` | json-file / journald driver | `docker logs` |
+
+In all of these the application code is identical: write JSON to fd 1/2.
+Swapping backend (Datadog → Elastic, say) is a collector config change, not a
+redeploy.
+
+### Where stdout-only stops being enough
+
+- **A bare `node dist/index.js &` with stdout not redirected** — the stream goes
+  to a detached terminal and is lost. stdout logging assumes *something* is
+  capturing fd 1/2. True on every platform above; not true if you background the
+  process by hand.
+- **No local buffering across a collector outage.** If the shipping agent is
+  down, container runtimes keep a bounded on-disk buffer (kubelet rotates at
+  ~10 MiB/file by default); beyond that, lines are dropped. A durable guarantee
+  needs an agent with a persistent queue (Vector's disk buffer, Fluent Bit
+  `storage.type filesystem`).
+- **`process.stdout.write` is synchronous** when fd 1 is a file or pipe (the
+  usual container case). Under a very high log rate this blocks the event loop.
+  Not a concern at this service's scale (a few lines per delivery); it is the
+  reason high-volume services use `pino`.
+- **No redaction / sampling layer.** We avoid the problem by construction — the
+  field dictionary never carries a payload, a full URL, or a credential — but
+  there is no second safety net if a future field is added carelessly.
+
+### The extension point
+
+`createLogger` (`src/infrastructure/logger.ts`) takes an optional
+`write(line, level)` sink. Everything below is implemented by supplying a
+different `write`, or by replacing the ~30-line factory with an adapter over a
+library while keeping the `Logger` port and every convention in this document
+unchanged. No call site changes.
+
+### Options considered
+
+| Option | What it adds | Est. effort | New deps | Cost impact | Performance impact |
+| --- | --- | --- | --- | --- | --- |
+| **A. stdout + document the pipeline** *(chosen)* | This section; a README pointer. The deployment platform captures fd 1/2 (table above). | ~30 min, no code | none | none | none |
+| **B. Config-driven extra sink (file / syslog)** | `LOG_DESTINATION` (`stdout` \| `file` \| `both`) + `LOG_FILE_PATH`; a fan-out `write`; config validation; tests. | ~1–1.5 hr | none | none (writes to local disk; log **rotation** then becomes an ops task — `logrotate` or the platform) | negligible; a second synchronous write per line |
+| **C. Swap internals for `pino`** | Replace the factory body with `pino`; thin adapter for argument order (`info(msg, fields)` → pino `info(fields, msg)`); keep the port, message catalogue, field dictionary, `child()`. Gain `redact`, and `pino.transport` targets: `pino/file`, `pino-opentelemetry-transport`, `pino-datadog-transport`, `pino-elasticsearch`, `pino-socket`, `pino-pretty` (dev). | ~1.5–3 hr incl. updating the ~3 tests that assert on the `write` seam and `docs/11` | `pino` (one dependency; the de-facto Node standard, actively maintained, no native addons) | none at runtime | **faster** than today: pino serialises in a fast path and, with a transport, moves I/O to a worker thread (`sonic-boom`), so the event loop no longer blocks on writes |
+| **D. pino + a shipping pipeline in-repo** | C, plus `pino-opentelemetry-transport` (or a vendor transport) and a docker-compose with an OpenTelemetry Collector / Vector, wired end-to-end with a demo. | ~1 day | pino + OTel exporter packages | the collector runs somewhere: a sidecar (negligible compute) **or** managed ingest priced **per GB ingested + retention** — CloudWatch Logs ≈ $0.50/GB in + $0.03/GB·month; Datadog ≈ $0.10/GB in + retention tier; Azure Monitor ≈ $0.10–0.30/GB after a free grant. Fractions of a cent at challenge traffic; a real budget line at production webhook volume, which is why sampling and payload-free logs matter. | collector adds < 1 ms per line locally; backend ingestion is out-of-process and asynchronous |
+
+### Recommendation
+
+Ship **A**. It satisfies "demonstrate awareness of observability": the logs are
+structured, correlated, and captured for free by any modern runtime.
+
+If a stronger observability bonus is wanted and ~2–3 hours are available, do
+**C** — it is the idiomatic Node equivalent of a Serilog setup with a
+compact-JSON console sink plus transports, it keeps every convention in this
+document, it is a net performance gain, and it costs one ubiquitous dependency.
+
+Skip **B** (a file sink is *less* twelve-factor than stdout, and it drags in log
+rotation). Skip **D** — building a log pipeline is beyond what the spec asks and
+its real cost is per-GB backend ingestion, a decision that belongs with the team
+that owns the production account.
