@@ -4239,3 +4239,432 @@ I lean **skip**, but it's a clean, self-contained add if you want the full-suite
 - 🔧 `Edit` — docs/8 - setup.md
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md package.json "docs/8 - setup.md" "docs/9 - decisions.md" "docs/14 - final…
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== yaml valid? ===" && python -c "import yaml; d=yaml.safe_load(open('docker-compose.dynamodb-loc…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A && git status --short && git commit -q -m "$(cat <<'EOF' Add DynamoDB Local so the opt-in Dyn…
+- 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/zv5" rm -rf "$…
+- 🔧 `Bash` — docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -iE "webhook|wr-|<none>" || echo "no stray/dangling project images"; echo "---"; docker image…
+Both Docker paths verified and in the package.
+
+## What was added
+
+| | |
+|---|---|
+| `Dockerfile` | verified against **in-memory** *and* **real DynamoDB** (a row created through the running container was read straight back from AWS via the CLI) |
+| `docker-compose.dynamodb-local.yml` + `npm run test:dynamodb:local` | starts a throwaway `amazon/dynamodb-local` container, runs the **17 DynamoDB contract tests** against it with dummy creds, tears it down. **17 pass.** No AWS account needed. |
+
+**Final ZIP verification** (fresh extraction → `npm ci`):
+1. `npm test` → 315 pass / 17 skipped ✅
+2. `npm run build` → `dist/index.js` ✅
+3. `docker build && docker run` → `/health` ✅
+4. `npm run test:dynamodb:local` → **17 pass** ✅
+
+So a reviewer can now run all 338 tests with **zero AWS account** (321 with `npm test`, +17 with `npm run test:dynamodb:local`).
+
+Docs updated: README (Tests + Docker, incl. the Git Bash `MSYS_NO_PATHCONV=1` gotcha for the real-DynamoDB container run), `docs/8`, `docs/9`, `docs/14`, test header. `.dockerignore` keeps the compose file out of the app build context.
+
+ZIP rebuilt — **336 KB** — tree clean, no stray containers/images.
+
+## One housekeeping item
+
+Your manual-testing pass left data in the **real** DynamoDB tables (9 subscriptions / 21 events / 26 deliveries in the deployed `webhook-registry` stack). It's not in the ZIP and the brief says they won't deploy it, so it's harmless — but want me to clear those tables (or tear the stack down per `docs/13 §8.4`) so it's tidy?
+
+## User
+
+To be clear, that data is just on AWS and won't show up in the container when anyone runs docker, which I imagine gives a fresh start and it would be impossible to have anything there without deliberate migration scripts, which we definitely don't want.  Yes, we tear down all the stuff on AWS since we shouldn't need it further.  But how can I manually test that this is working with docker hosting both the solution and dynamodb?
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && aws cloudformation delete-stack --stack-name webhook-registry --profile webhook-challenge --region eu-ce…
+- 🔧 `Read` — tests/support/dynamodb-test-tables.ts
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "export function buildApplication\|async function\|buildRepositories\|await\|Promise<Application…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && aws cloudformation wait stack-delete-complete --stack-name webhook-registry --profile webhook-challenge …
+- 🔧 `Write` — src/infrastructure/dynamodb/table-schema.ts
+- 🔧 `Write` — src/infrastructure/dynamodb/ensure-tables.ts
+- 🔧 `Read` — src/infrastructure/dynamodb/dynamodb-client.ts
+- 🔧 `Edit` — src/infrastructure/dynamodb/dynamodb-client.ts
+- 🔧 `Write` — src/provision.ts
+- 🔧 `Edit` — tests/support/dynamodb-test-tables.ts
+- 🔧 `Edit` — tests/support/dynamodb-test-tables.ts
+- 🔧 `Edit` — tests/support/dynamodb-test-tables.ts
+- 🔧 `Edit` — src/provision.ts
+- 🔧 `Write` — docker-compose.yml
+- 🔧 `Edit` — package.json
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run typecheck 2>&1 | tail -8 && npm run lint 2>&1 | tail -5
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx vitest run --project integration tests/integration/dynamodb-repositories.test.ts --reporter=basic 2>…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== provision logs ===" && docker compose logs provision 2>&1 | tail -8 && echo && echo "=== provi…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker compose down 2>&1 | tail -4 && docker images -q webhook-registry genesyscodingchallenge-app genes…
+- 🔧 `Bash` — docker rmi -f genesyscodingchallenge-app genesyscodingchallenge-provision 2>&1 | tail -3; docker images --format '{{.Repository}}' | grep -iE "genesys|webhook-r…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run check 2>&1 | grep -E "Tests|Test Files|error|warn" | tail -4; echo "gate: $?"; echo "--- real-AW…
+**No — nothing AWS is being removed.** Let me be precise about what happened:
+
+| AWS thing | Status |
+|---|---|
+| `infrastructure/cloudformation.yaml` | **unchanged** |
+| `src/infrastructure/dynamodb/` (the adapter — SDK, credential chain, GSI queries) | **unchanged** |
+| `RUN_DYNAMODB_TESTS=1 AWS_PROFILE=… npm run test:all` against real AWS | **works** — just re-verified, 17/17 |
+| README / docs | real AWS still documented as the **primary** DynamoDB path |
+| The *deployed* CloudFormation stack (3 empty tables on AWS) | **deleted** — because you said "tear down all the stuff on AWS since we shouldn't need it further" |
+
+The only thing removed is the **deployed infrastructure you asked me to tear down**. It redeploys in one command (`aws cloudformation deploy --template-file infrastructure/cloudformation.yaml …`). Zero code or capability gone.
+
+**It works.** `docker compose up` → a `provision` container creates the 3 tables in DynamoDB Local → the app container starts → I created a subscription and published an event through the containerised app and confirmed the row directly in DynamoDB Local. Both other paths still pass too (real AWS: 17/17, `test:dynamodb:local`: 17/17).
+
+DynamoDB now runs three ways, all green: **real AWS** (unchanged, primary), `npm run test:dynamodb:local`, and `docker compose up`.
+
+The full-stack compose is uncommitted — it needed a bit of new code (`provision.ts` + `ensure-tables.ts` + `table-schema.ts`, ~110 lines; `provision.ts` is guarded so it *cannot* touch real AWS). Your call on scope:
+
+- 🔧 `AskUserQuestion` — {"questions":[{"question":"Keep the full-stack `docker compose up` (app + DynamoDB Local, auto-provisioned tables)?","header":"Scope","multiSelect":false,"optio…
+What would you like to clarify? A few things I can expand on:
+
+- **What exactly the new code does.** `table-schema.ts` = the 3 table shapes (keys + GSIs) as one definition. `ensure-tables.ts` = "create each table if it doesn't exist." `provision.ts` = a tiny entry point that runs `ensure-tables` — but only if `DYNAMODB_ENDPOINT` is set, so it can never run against real AWS. `docker-compose.yml` wires: DynamoDB Local → `provision` (one-shot) → app.
+
+- **Whether this changes anything about the real-AWS path.** It doesn't. Real AWS still uses `infrastructure/cloudformation.yaml` for tables and the SDK credential chain for auth. The `test-schema.ts` refactor just means the test helper and the local provisioner now share one definition instead of each having their own copy.
+
+- **The alternative — no new src code.** I could instead do table creation inside the compose file with an `amazon/aws-cli` init container running `aws dynamodb create-table` ×3. Keeps it out of `src/`, but it's more verbose and duplicates the schema in YAML.
+
+- **Whether you even need the full stack.** If "manually test docker + dynamodb together" for you just means "the app container talks to *some* DynamoDB," you could point the app container at real AWS (`-e PERSISTENCE=dynamodb` + `~/.aws` mount) — which I already verified — and skip the local-DB compose entirely.
+
+What's the concern?
+
+## User
+
+I just meant we didn't need the data/metadata ON AWS ITSELF anymore since I thought we were done testing it  -- The challenge specifically ASKS for CloudFormation!  We need that -- working as it was!
+
+## Assistant
+
+You're right that the challenge needs CloudFormation — and it's **fine**. Two different things:
+
+- **`infrastructure/cloudformation.yaml`** — the template, the actual deliverable (bonus #7). I never touched it. It's byte-for-byte the same, tracked, in the zip, and valid. The challenge even says *"you don't have to deploy it and we won't deploy it."*
+- **The deployed stack** — a live *instance* created from that template (3 empty tables). That's what `delete-stack` removed, per "tear down all the stuff on AWS."
+
+Deleting a deployment doesn't harm the template any more than uninstalling an app harms its installer. But you want it back deployed and working — restoring that now:
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== 1. template still valid (server-side) ===" && aws cloudformation validate-template --template-…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== CFN stack + tables ===" && aws cloudformation describe-stacks --stack-name webhook-registry --…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && for t in subscriptions events deliveries; do echo "=== webhook-registry-$t ==="; aws dynamodb describe-t…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== real-AWS DynamoDB contract tests ===" && RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge np…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== the ONLY test-file change (tests/support/dynamodb-test-tables.ts) ===" && git diff tests/suppo…
+Here's the complete picture. Nothing AWS was degraded.
+
+## CloudFormation — restored, verified
+
+| | |
+|---|---|
+| `infrastructure/cloudformation.yaml` (the template — the deliverable) | **never modified**; `cfn-lint` clean; server-side `validate-template` OK |
+| Stack `webhook-registry` | **redeployed** → `CREATE_COMPLETE` |
+| `webhook-registry-subscriptions` | ACTIVE — PK `id` + `eventType-index` ✅ |
+| `webhook-registry-events` | ACTIVE — PK `id` ✅ |
+| `webhook-registry-deliveries` | ACTIVE — PK `id` + `eventId-index` / `subscriptionId-index` / `status-index` ✅ |
+
+Exactly as it was.
+
+## Tests — nothing removed, nothing weakened
+
+The **only** test-file change is `tests/support/dynamodb-test-tables.ts`. The three inline `CreateTableCommand` blocks were replaced with a loop over `tableDefinitions(names)` — a new module holding the **identical** table shapes. It's −73 lines of duplication, same behaviour. The GSI names and keys (the AWS-specific detail) are still there, just defined once instead of twice.
+
+- The 17 DynamoDB contract tests: **logic unchanged**, just re-verified against **real AWS** → 17/17 pass.
+- No test deleted. `RUN_DYNAMODB_TESTS=1 AWS_PROFILE=… npm run test:all` → **338 pass**, same as before.
+
+## What's uncommitted (your call)
+
+```
+new:  table-schema.ts, ensure-tables.ts, provision.ts, docker-compose.yml
+mod:  dynamodb-client.ts (+createDynamoClient), dynamodb-test-tables.ts (dedup), package.json (+2 scripts)
+```
+
+This is the "`docker compose up` = app + DynamoDB Local, no AWS" capability you asked to test. It works. **`provision.ts` is guarded — it refuses to run without `DYNAMODB_ENDPOINT`, so it can never create tables on real AWS.**
+
+- 🔧 `AskUserQuestion` — {"questions":[{"question":"Commit the uncommitted full-stack Docker changes, or revert them?","header":"Uncommitted","multiSelect":false,"options":[{"label":"Co…
+What would you like to clarify? I want to make sure I'm addressing the actual concern.
+
+Some possibilities of what might be worrying you:
+
+- **Whether the CloudFormation bonus is still solid.** It is — template untouched, stack redeployed and `CREATE_COMPLETE`, all three tables ACTIVE with the right schema. That box is ticked exactly as it was.
+
+- **Whether I quietly weakened the DynamoDB tests.** I didn't — the 17 contract tests have identical logic, still run against real AWS (17/17 just now), still exercise every GSI. The one change was moving the table-shape definitions out of the test helper into a shared file so the new local provisioner and the test helper use one copy instead of two.
+
+- **Whether this is more scope than you wanted.** Quite possibly. You asked to "add docker as an alternative and make sure it works." The `Dockerfile` + `npm run test:dynamodb:local` (both already committed) cover that. The extra `docker compose up` full-stack came from your later "how can I manually test docker hosting both the solution and dynamodb" — but if it feels like creep, reverting the uncommitted part is clean and loses nothing that the challenge asks for.
+
+- **Whether anything is in a broken/half-done state.** It's not. Everything committed passes the full gate. The uncommitted files are verified working but not yet committed — I can commit or revert them with one command.
+
+Tell me what's on your mind and I'll sort it.
+
+## User
+
+To be clear, the current state of things allows persistence in AWS, docker, or memory?  And all these possibilities are adequately covered in the tests?
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== in-memory repo test ===" && cat src/infrastructure/memory/in-memory-repositories.test.ts && ec…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -cE "^\s+(it|test)\(" tests/support/repository-contract.js 2>/dev/null; grep -cE "\b(it|test)\(" te…
+Small correction to the framing, then the answer: there are **two persistence adapters** — `memory` and `dynamodb`. "Docker" isn't a third one; it's a way to *run* things. The `dynamodb` adapter can point at real AWS **or** DynamoDB Local (which we run via Docker) **or** any DynamoDB-compatible endpoint.
+
+## Persistence options — current state
+
+| `PERSISTENCE=` | Targets | Committed? |
+|---|---|---|
+| `memory` | in-process | ✅ |
+| `dynamodb` | real AWS (CloudFormation + SDK credential chain) | ✅ |
+| `dynamodb` | DynamoDB Local — `npm run test:dynamodb:local`, or `docker compose up` for a full app+DB stack | tests-only variant ✅ committed; full-stack `docker compose up` **uncommitted** |
+
+## Test coverage
+
+**Both adapters run the identical 17-test repository contract** (`tests/support/repository-contract.ts`) — same behavioural spec for `memory` and `dynamodb`:
+
+| Test file | Adapter | When | Verified |
+|---|---|---|---|
+| `in-memory-repositories.test.ts` | `memory` | every `npm test` | ✅ always |
+| `dynamodb-repositories.test.ts` | `dynamodb` | opt-in (`RUN_DYNAMODB_TESTS=1` + an endpoint) | ✅ real AWS 17/17 · ✅ DynamoDB Local 17/17 |
+
+Plus:
+- **Integration (~53) + E2E (6)** — full HTTP + dispatch + retry + recovery stack — run against `memory`
+- **Manual pass** — the full app against real AWS DynamoDB (`docs/13`)
+- **Container** — verified against real AWS DynamoDB *and* DynamoDB Local
+
+**Totals:** `npm test` → 315 · `npm run test:all` → 321 · with DynamoDB enabled → **338**.
+
+So: yes, all persistence paths are covered — `memory` and `dynamodb` by the same contract, `dynamodb` proven against both real AWS and a local endpoint. The only open decision is whether to commit the `docker compose up` full-stack convenience (the adapter it exercises is already tested; the compose file just makes it one command).
+
+## User
+
+Please commit.  I do want to actually _see_ this before we update the package.  I need to know how to test it.  (Make sure the documentation includes how to get it up and running with docker and the manual testing documentation should also tell the tester how to set up for testing from AWS, Docker, or memory.  (I imagine the tests are the same so no need to change or restate them.)
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write src/provision.ts src/infrastructure/dynamodb/ensure-tables.ts src/infrastructure/dy…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A && git commit -q -m "$(cat <<'EOF' Add `docker compose up` — full local stack (app + DynamoDB…
+- 🔧 `Read` — README.md
+- 🔧 `Read` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Read` — docs/13 - manual-test-plan.md
+- 🔧 `Edit` — package.json
+- 🔧 `Edit` — docs/13 - manual-test-plan.md
+- 🔧 `Read` — docs/13 - manual-test-plan.md
+- 🔧 `Edit` — docs/13 - manual-test-plan.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "PERSISTENCE=memory\|PERSISTENCE=dynamodb\|does not survive a restart\|start from a clean slate\…
+- 🔧 `Read` — docs/13 - manual-test-plan.md
+- 🔧 `Edit` — docs/13 - manual-test-plan.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write "docs/13 - manual-test-plan.md" README.md package.json >/dev/null 2>&1 && npm run c…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== BACKEND B walkthrough (DynamoDB Local + app on host) ===" && \ docker compose -f docker-compos…
+- 🔧 `Bash` — cat /tmp/bkb.log | grep -iE "error|listen|persistence" | head; echo "=== bkb2 ==="; cat /tmp/bkb2.log | grep -iE "error|listen|persistence" | head
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker compose -f docker-compose.dynamodb-local.yml up -d >/dev/null 2>&1 && sleep 2 && PERSISTENCE=dyna…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && SID=$(curl -s localhost:3020/subscriptions | grep -o '"id":"sub_[^"]*"' | head -1 | cut -d'"' -f4) echo …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "docker-compose\|provision\|stack:up\|full local stack\|test:dynamodb:local" "docs/9 - decisions…
+- 🔧 `Read` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write "docs/9 - decisions.md" "docs/14 - final-report.md" >/dev/null 2>&1 && npm run form…
+Committed (3 commits). **Zip not rebuilt yet** — waiting for you to see it first. AWS stack is back up (`CREATE_COMPLETE`, correct schema).
+
+## See the full Docker stack
+
+```bash
+# Terminal 1 — app + DynamoDB Local, one command:
+npm run stack:up          # = docker compose up --build
+#   wait for:  provision-1 ... Exited (0)
+#              app-1       ... {"message":"server.listening",...}
+```
+
+```bash
+# Terminal 2 — poke it:
+curl -s localhost:3000/health
+curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
+  -d '{"eventType":"order.created","targetUrl":"https://example.com/hook"}'
+curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
+  -d '{"type":"order.created","data":{"orderId":"1"}}'
+curl -s localhost:3000/deliveries
+
+# prove it's really in DynamoDB Local, not memory:
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
+  aws dynamodb scan --endpoint-url http://localhost:8000 --region eu-central-1 \
+  --table-name webhook-registry-events --query 'Count'
+```
+
+- API console: **http://localhost:3000/docs**
+- Stop: `Ctrl+C` in terminal 1, then `npm run stack:down`
+- Every `up` is a clean slate (DynamoDB Local runs `-inMemory`)
+
+## For the actual test scenarios (§3–§5)
+
+`docs/13 §2.1.1` now has a **"Choose a persistence backend"** table — A (in-memory), B (DynamoDB Local via Docker), C (real AWS) — with the exact `.env` + commands for each. The scenarios themselves don't change.
+
+For B during the manual pass, the doc recommends running **DynamoDB Local in a container + the app on the host** (`npm run provision:dynamo` then `npm start`) rather than the full `docker compose up`, because then `npm run inbox` on `localhost:4000` just works (a containerised app would need `host.docker.internal:4000`).
+
+I verified B end-to-end: provision → app → create subscription → row visible in DynamoDB Local via `aws --endpoint-url` → **survives an app restart**.
+
+## User
+
+.env.example no longer includes all the supported keys... for examples, """AWS_ACCESS_KEY_ID=local
+AWS_SECRET_ACCESS_KEY=local"" are both missing.
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== current .env.example ===" && cat -n .env.example && echo && echo "=== config.ts keys ===" && g…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -rln "env.example\|\.env\.example\|envExample" src/ tests/ ; echo "--- (none = no automated cross-c…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "readFileSync\|\.env\|example\|fs\." src/config.test.ts; echo "---"; grep -rn "readFileSync.*env…
+- 🔧 `Read` — src/config.ts
+- 🔧 `Read` — src/config.ts
+- 🔧 `Edit` — src/config.ts
+- 🔧 `Edit` — .env.example
+- 🔧 `Read` — src/config.test.ts
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && tail -20 src/config.test.ts
+- 🔧 `Edit` — src/config.test.ts
+- 🔧 `Edit` — src/config.test.ts
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run typecheck 2>&1 | tail -4 && npm run lint 2>&1 | tail -4 && npx vitest run --project unit src/con…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sed -n '242,250p' "docs/9 - decisions.md"
+- 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write .env.example src/config.ts src/config.test.ts "docs/9 - decisions.md" >/dev/null 2>…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run format:check 2>&1 | tail -4; echo "fmt: $?"; npm run lint 2>&1 | tail -3; echo "lint: $?"; npm r…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run test:all 2>&1 | tail -20; echo "test: $?"
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run check 2>&1 | tail -6; echo "EXIT: $?"
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -rn "321 pass\|338 pass\|262 unit\|53 integration\|321 tests\|319 pass" README.md "docs/9 - decisio…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && for p in unit integration e2e; do echo -n "$p: "; npx vitest run --project $p 2>&1 | grep -E "Tests +[0-…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && python3 - <<'PY' subs = [ ("README.md", "262 unit / 53 integration (+ 17 opt-in DynamoDB) / 6 E2E, follo…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A >/dev/null 2>&1; git stash >/dev/null 2>&1; N=$(git archive --format=tar HEAD 2>/dev/null | t…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git status --short && echo "---" && grep -c "AWS_ACCESS_KEY_ID" .env.example && grep -c "KNOWN_CONFIG_EN…
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write .env.example README.md "docs/9 - decisions.md" "docs/12 - architecture-review.md" "…
+Real bug — `npm run provision:dynamo` doesn't load `.env` (unlike `dev`/`start`). Fixing:
+
+- 🔧 `Edit` — package.json
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "DYNAMODB_ENDPOINT=http://localhost:8000" > /tmp/testenv && cp .env /tmp/env.bak 2>/dev/null; echo …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== user's .env ===" && grep -vE "^\s*#|^\s*$" .env 2>/dev/null || echo "(no .env or all comments)…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run check 2>&1 | tail -5; echo "EXIT: $?"; git add -A && git status --short
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git commit -q -m "$(cat <<'EOF' .env.example: cover all three backends + AWS SDK cred vars; add a sync t…
+The fix is in — `npm run provision:dynamo` now loads `.env` (it wasn't before, unlike `dev`/`start`). Re-run it.
+
+But first, two things about your setup:
+
+**1. DynamoDB Local must be running before `provision:dynamo`:**
+
+```bash
+docker compose -f docker-compose.dynamodb-local.yml up -d   # start it
+npm run build && npm run provision:dynamo                    # then this
+```
+
+**2. Your `.env` is mixing backend B and C.** It has `AWS_PROFILE=webhook-challenge` (real AWS) *and* `AWS_ACCESS_KEY_ID=local` *and* `DYNAMODB_ENDPOINT=http://localhost:8000`. It happens to work (env keys beat the profile, so it talks to localhost:8000 with dummy creds) but it's confusing and the comment still says "real AWS DynamoDB". Clean backend-B `.env`:
+
+```dotenv
+LOG_LEVEL=debug
+LOG_FORMAT=pretty
+SSRF_GUARD_ENABLED=false
+ALLOW_INSECURE_TARGET_URLS=true
+MAX_DELIVERY_ATTEMPTS=4
+RETRY_BASE_DELAY_MS=1000
+RETRY_MAX_DELAY_MS=8000
+RECOVERY_INTERVAL_MS=5000
+STUCK_DELIVERING_THRESHOLD_MS=10000
+
+# Backend B — DynamoDB Local (Docker), no AWS account:
+PERSISTENCE=dynamodb
+DYNAMODB_ENDPOINT=http://localhost:8000
+AWS_REGION=eu-central-1
+AWS_ACCESS_KEY_ID=local
+AWS_SECRET_ACCESS_KEY=local
+DYNAMODB_SUBSCRIPTIONS_TABLE=webhook-registry-subscriptions
+DYNAMODB_EVENTS_TABLE=webhook-registry-events
+DYNAMODB_DELIVERIES_TABLE=webhook-registry-deliveries
+```
+
+Want me to write that to your `.env`? (It's your local file so I haven't touched it.)
+
+## User
+
+Yes.  I would like to test with Docker, including the local dynamodb
+
+## Assistant
+
+- 🔧 `Write` — .env
+- 🔧 `Read` — .env
+- 🔧 `Write` — .env
+- 🔧 `Bash` — netstat -ano | grep -E ':(3000|4000|8000) ' | grep LISTENING || echo "3000/4000/8000 all free"
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "STEP 1: start DynamoDB Local" && docker compose -f docker-compose.dynamodb-local.yml up -d 2>&1 | …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && jv() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; } echo "health: $(curl -s localhost:3000/h…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && for p in 3000 4000; do netstat -ano | grep ":$p " | grep LISTENING | awk '{print $5}' | sort -u | xargs …
+Done — `.env` is now a clean backend-B config, and I verified the whole flow end-to-end. Here's your setup:
+
+## Terminals (Git Bash)
+
+```bash
+# Terminal 0 — DynamoDB Local (start once, leave running):
+docker compose -f docker-compose.dynamodb-local.yml up -d
+npm run build && npm run provision:dynamo
+#   → dynamodb.table.created ×3 · provision.completed
+
+# Terminal 1 — the webhook inbox:
+npm run inbox
+
+# Terminal 2 — the service:
+npm start
+#   → persistence.selected  persistence=dynamodb  dynamoEndpoint=http://localhost:8000
+#   → server.listening  port=3000
+
+# Terminal 3 — your curl commands
+```
+
+Then run the manual test plan **§3–§5 exactly as written**. I verified: create subscription → publish event → delivery lands in the inbox → `GET /deliveries` shows `delivered` → and the row is genuinely in DynamoDB Local (checked directly, bypassing the app).
+
+## What's different from backend A (memory)
+
+- **State survives an app restart** — so `$SUB1` etc. stay valid across F2/F3/R3/R5's restarts. (`docker compose … down` *does* wipe it — it runs `-inMemory`.)
+- No SSO, no AWS, no token expiry.
+
+## Peek at the data directly
+
+```bash
+AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
+  aws dynamodb scan --endpoint-url http://localhost:8000 --region eu-central-1 \
+  --table-name webhook-registry-deliveries
+```
+
+## When done
+
+```bash
+docker compose -f docker-compose.dynamodb-local.yml down
+```
+
+`docs/13 §2.1.1` documents this (backend B) plus the all-in-containers option (`docker compose up`, where a subscription's `targetUrl` needs `host.docker.internal:4000`). The zip is **not** rebuilt yet — go test.
+
+## User
+
+It works!  :-)  But I'm a little concerned whether the default persistence should be memory rather than dynamodb since the task reads "Data must be persisted to external storage (bonus: DynamoDB)" ... but on the other hand, that's not going to work without setup anyway.
+
+## Assistant
+
+You've already spotted the catch: **no default can be both "works with zero setup" and "external storage"** — external storage inherently needs a database to point at. So it comes down to which first-run experience you want.
+
+**The requirement is about capability, and that's delivered.** "Data must be persisted to external storage (bonus: DynamoDB)" — the `dynamodb` adapter exists, is a first-class citizen behind the same port, and is verified three ways (real AWS, DynamoDB Local, the container). The requirement isn't "the default must be external"; it's "the system must persist externally," which it does.
+
+**Why `memory` default still makes sense:**
+- `npm install && npm test && npm run dev` all work instantly — the property a reviewer values most.
+- `dynamodb` default → a bare `npm run dev` crashes on the first request (your point). That's a worse impression than a running server with a warning.
+- It's **not silent** — startup always logs `config.warning: PERSISTENCE=memory … all data is lost on restart` (in every environment now).
+- Documented as a deliberate call in `docs/9` and flagged in the final report.
+
+**If you want to be more literal about it**, the alternative is: **no default — `PERSISTENCE` required**, `loadConfig` fails fast with `"PERSISTENCE must be 'memory' or 'dynamodb' — see README"`. Then the choice is always conscious, `npm test` is unaffected (tests set it), and the README's run step becomes `cp .env.example .env` first. Costs a bare `npm run dev` a one-line error instead of a running server.
+
+My lean is **keep `memory`** — the capability is what's graded, and a zero-setup run is worth more than the literalism. But it's a genuine judgment call.
+
+- 🔧 `AskUserQuestion` — {"questions":[{"question":"Default persistence?","header":"PERSISTENCE default","multiSelect":false,"options":[{"label":"Keep `memory` (recommended)","descripti…
+Keeping `memory`. No changes — the current state is already that, and the reasoning is on the record for the evaluator:
+
+- **`docs/9` §3** — full decision entry: two adapters behind a port, the challenge's external-storage requirement *is* implemented, `memory` is the default purely so a fresh clone runs with zero setup, `dynamodb` is one env var away, and it's never silent (the unconditional `config.warning`).
+- **`docs/14` §1 / §2** — external persistence listed under implemented requirements, DynamoDB under bonuses, verified three ways.
+
+So a reviewer sees: it's a deliberate dev-ergonomics call, not a punt on the requirement.
+
+You've now seen all three backends working. Whenever you're satisfied, say the word and I'll do the final conversation export + zip rebuild.
+
+## User
+
+If you are certain all the documentation is now up to date and all the automated tests are still passing, please do the final conversation export and rebuild the zip.
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== git state ===" && git status --short && git log --oneline -1 && echo && echo "=== clean build …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== SSO + CFN state ===" && aws sts get-caller-identity --profile webhook-challenge --query Accoun…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== test:dynamodb:local ===" && npm run test:dynamodb:local 2>&1 | grep -E "Tests |Test Files" | t…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== stale counts? (should be none) ===" && grep -rn "321 pass\|338 pass\|262 unit\|319 pass\|315 p…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== README endpoint table ===" && grep -E "^\| \`(GET|POST|PUT|DELETE)\`" README.md && echo && ech…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run export:conversation 2>&1 | tail -1 && git add -A && git commit -q -m "Regenerate docs/ai-convers…
