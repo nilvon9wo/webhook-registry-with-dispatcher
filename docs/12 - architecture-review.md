@@ -216,7 +216,7 @@ re-adding `component`.
 | Env-driven config, safe defaults, no secrets | ✅ |
 | HTTPS-only URLs, SSRF consideration | ✅ (guard implemented; DNS-rebinding documented) |
 | At-least-once semantics, not exactly-once | ✅ (documented) |
-| Test pyramid | ✅ (262 unit / 53 integration / 6 E2E (+ 17 opt-in DynamoDB); 321 pass / 17 skipped, 338 with DynamoDB) |
+| Test pyramid | ✅ (283 unit / 53 integration / 6 E2E (+ 17 opt-in DynamoDB); 342 pass / 17 skipped, 359 with DynamoDB) |
 
 ## Remaining issues
 

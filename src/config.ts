@@ -111,6 +111,17 @@ const DEFAULTS = {
   SSRF_GUARD_ENABLED: true,
 } as const;
 
+/**
+ * Every environment variable `loadConfig` reads. `.env.example` must document
+ * all of them (asserted by `config.test.ts`). AWS SDK credential variables
+ * (`AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, …) are resolved
+ * by the SDK provider chain, not here.
+ */
+export const KNOWN_CONFIG_ENV_KEYS: readonly string[] = [
+  ...Object.keys(DEFAULTS),
+  'DYNAMODB_ENDPOINT', // no default — unset means real AWS
+];
+
 type EnvRecord = Record<string, string | undefined>;
 
 export function loadConfig(env: EnvRecord = process.env): AppConfig {

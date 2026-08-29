@@ -13,12 +13,12 @@ Webhook Registry + Dispatcher — submission report and release check.
 | Check | Result |
 | --- | --- |
 | Clean TypeScript build | ✅ `rm -rf dist && npm run build` → exit 0 |
-| Complete test suite | ✅ `npm run check` → **321 passed, 17 skipped**; with real DynamoDB → **338 passed** |
+| Complete test suite | ✅ `npm run check` → **342 passed, 17 skipped**; with real DynamoDB → **359 passed** |
 | Lint / format | ✅ oxlint clean · `prettier --check .` clean · typecheck (src + tests) clean |
 | No secrets / credentials | ✅ no keys / ARNs / account IDs / PEM in tracked files (one `secret:` hit is a test fixture asserting such fields are **not** logged) |
-| No unnecessary files | ✅ `git archive HEAD` = 127 files, no `.env` / `node_modules` / `.idea` / `dist` / `coverage` |
+| No unnecessary files | ✅ packaged with `git archive HEAD` (tracked files only) — no `.env` / `node_modules` / `.idea` / `dist` / `coverage` |
 | CloudFormation valid | ✅ `aws cloudformation validate-template` + `cfn-lint`; live stack `CREATE_COMPLETE`, 3 tables, no test orphans |
-| Configuration docs accurate | ✅ `.env.example` ↔ `src/config.ts` ↔ README table list the same settings |
+| Configuration docs accurate | ✅ `config.test.ts` asserts `.env.example` documents every key `config.ts` reads (and that `config.ts` references none outside `KNOWN_CONFIG_ENV_KEYS`) |
 | README accurate | ✅ corrected this pass (test counts; the DynamoDB-Local claim — see [§6](#6-for-the-evaluator)) |
 | Package scripts from a clean checkout | ✅ end-to-end smoke from a fresh `dist/`: health, CRUD, publish → deliver, `/openapi.yaml`, `/docs` |
 | Docker image | ✅ `docker build` → `docker run` → health / create / publish / `docker stop` (graceful `SIGTERM`, exit 0); ~350 MB, non-root; also verified `-e PERSISTENCE=dynamodb` against real AWS |
@@ -90,8 +90,8 @@ Full record in `9 - decisions.md`. Highlights:
 ## 5. Test results
 
 ```
-npm run check           → 321 passed, 17 skipped      (262 unit / 53 integration / 6 e2e)
-RUN_DYNAMODB_TESTS=1 …   → 338 passed, 0 skipped       (+17 DynamoDB contract tests, real AWS)
+npm run check           → 342 passed, 17 skipped      (283 unit / 53 integration / 6 e2e)
+RUN_DYNAMODB_TESTS=1 …   → 359 passed, 0 skipped       (+17 DynamoDB contract tests, real AWS)
 ```
 
 - Test pyramid per `5 - testing.md`; every test follows an explicit `// Arrange` / `// Act` (one statement) / `// Assert` structure.
@@ -105,5 +105,5 @@ RUN_DYNAMODB_TESTS=1 …   → 338 passed, 0 skipped       (+17 DynamoDB contrac
 3. **Packaging** was done with `git archive` (tracked files only). `.env` (real configuration) is intentionally not tracked — only `.env.example`.
 4. **Docs numbering:** `docs/` is flat and numbered in the order the files were written; the README groups them into a reading order. `2 - plan.md` is the *original* plan — `9 - decisions.md` is the as-built record and the reconciliation log.
 5. **The deployed CloudFormation stack was redeployed during testing.** The originally-deployed stack still carried the pre-implementation key schema, which broke the app against real DynamoDB; found via the manual pass, fixed by `delete-stack` + redeploy from the corrected template, then verified end-to-end (`9 - decisions.md` item 11).
-6. **DynamoDB was verified two ways** — against real AWS (`RUN_DYNAMODB_TESTS=1 AWS_PROFILE=… npm run test:all` → 338 pass; the app and the container both), and against **DynamoDB Local** (`npm run test:dynamodb:local` → the 17 contract tests in a throwaway container). Docker is used for the app image and that local test fixture; it is **optional** — the service runs directly on Node.js and 321 tests need nothing but `npm install`.
+6. **DynamoDB was verified two ways** — against real AWS (`RUN_DYNAMODB_TESTS=1 AWS_PROFILE=… npm run test:all` → 359 pass; the app and the container both), and against **DynamoDB Local** (`npm run test:dynamodb:local` → the 17 contract tests in a throwaway container). Docker is used for the app image and that local test fixture; it is **optional** — the service runs directly on Node.js and 342 tests need nothing but `npm install`.
 7. **AWS SSO tokens last ~1 h.** If you point the app at DynamoDB and see `recovery.sweep.failed` / `Token is expired`, run `aws sso login --profile webhook-challenge` — the running server self-heals on its next sweep.

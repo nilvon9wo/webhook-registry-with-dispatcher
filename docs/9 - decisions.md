@@ -241,9 +241,12 @@ It is a living document, updated as implementation proceeds.
     is a built-in-sink convenience — a custom `write` always gets the JSON line.
 
 - **Configuration review (prompt 15):** every operational setting in the spec §12
-  list is an env var with a safe default and aggregated validation
-  (`config.ts` + `.env.example`, both cross-checked in a test). No secrets in
-  config — AWS credentials only from the SDK provider chain. Startup logs a
+  list is an env var with a safe default and aggregated validation. `config.ts`
+  exports `KNOWN_CONFIG_ENV_KEYS`; `config.test.ts` asserts (a) it covers every
+  UPPER_SNAKE key referenced in `config.ts`, and (b) `.env.example` documents
+  every entry — so the three cannot drift. No secrets in config — AWS
+  credentials come only from the SDK provider chain (`.env.example` shows where
+  `AWS_PROFILE` / `AWS_ACCESS_KEY_ID` go but they are read by the SDK, not here). Startup logs a
   non-secret `configSummary` and `configWarnings` for risky combinations
   (`PERSISTENCE=memory` in production, insecure target URLs, SSRF guard off,
   recovery disabled). Added `requests.http` and a README Configuration section.
@@ -262,8 +265,8 @@ It is a living document, updated as implementation proceeds.
   triggers an error-level log can silence it.
 - **All tests pass, DynamoDB included.** `npm test` / `test:all` keep the
   DynamoDB repository tests skipped (they need a DynamoDB endpoint, and CI has
-  none): **321 pass, 17 skipped**. Verified with `RUN_DYNAMODB_TESTS=1
-  AWS_PROFILE=webhook-challenge npm run test:all` → **338 pass, 0 skipped**
+  none): **342 pass, 17 skipped**. Verified with `RUN_DYNAMODB_TESTS=1
+  AWS_PROFILE=webhook-challenge npm run test:all` → **359 pass, 0 skipped**
   against real AWS, throwaway tables torn down, no orphans (re-run for prompt 22).
 - **AAA standard tightened (`docs/5`):** the "Act is one statement" rule now
   spells out that value-extraction, async synchronisation (`whenIdle` /

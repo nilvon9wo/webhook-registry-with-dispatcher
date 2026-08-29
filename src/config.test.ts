@@ -1,6 +1,13 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { captureError } from '../tests/support/capture-error.js';
-import { ConfigError, configSummary, configWarnings, loadConfig } from './config.js';
+import {
+  ConfigError,
+  configSummary,
+  configWarnings,
+  KNOWN_CONFIG_ENV_KEYS,
+  loadConfig,
+} from './config.js';
 
 describe('loadConfig', () => {
   it('returns safe defaults for every setting when the environment is empty', () => {
@@ -269,5 +276,42 @@ describe('configWarnings', () => {
 
     // Assert
     expect(warnings.join(' ')).toMatch(/PERSISTENCE=memory in production/);
+  });
+});
+
+describe('config ↔ .env.example ↔ source are in sync', () => {
+  const configSource = readFileSync(new URL('./config.ts', import.meta.url), 'utf8');
+  const exampleKeys = new Set(
+    readFileSync(new URL('../.env.example', import.meta.url), 'utf8')
+      .split('\n')
+      .map((line) => /^#?\s*([A-Z][A-Z0-9_]+)=/.exec(line)?.[1])
+      .filter((key): key is string => key !== undefined),
+  );
+
+  it('KNOWN_CONFIG_ENV_KEYS lists every UPPER_SNAKE key referenced in config.ts', () => {
+    // Arrange — env keys used in `config.ts` (string literals + `env.KEY` access).
+    const referenced = new Set<string>();
+    for (const match of configSource.matchAll(
+      /(?:'([A-Z][A-Z0-9_]{2,})'|env\.([A-Z][A-Z0-9_]{2,}))/g,
+    )) {
+      referenced.add(match[1] ?? (match[2] as string));
+    }
+    referenced.delete('KNOWN_CONFIG_ENV_KEYS'); // the export itself
+
+    // Act — keys config.ts uses but the canonical list omits.
+    const undocumented = [...referenced].filter((key) => !KNOWN_CONFIG_ENV_KEYS.includes(key));
+
+    // Assert
+    expect(undocumented).toEqual([]);
+  });
+
+  it.each(KNOWN_CONFIG_ENV_KEYS)('.env.example documents %s', (key) => {
+    // Arrange — none.
+
+    // Act — membership check.
+    const documented = exampleKeys.has(key);
+
+    // Assert
+    expect(documented).toBe(true);
   });
 });
