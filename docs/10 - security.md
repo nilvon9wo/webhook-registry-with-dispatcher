@@ -87,7 +87,28 @@ the target hostname — acceptable operational detail, not a secret.
 - **Prototype pollution**: validators read named fields only; `event.data` is
   stored as opaque data and never merged into an object or used as a key path.
 
-## 9. Authentication / authorization — *documented, not implemented*
+## 9. Error responses — *mitigated*
+
+A handler that throws an unexpected error returns exactly
+`{"error":{"message":"Internal server error"}}` with status `500`; the real
+error and its stack go to the log only (`http.request_error`, `error` level).
+Asserted by `tests/integration/security.test.ts`. Validation failures return
+`400` with a `details` array naming the offending fields — no internal paths or
+types. There is in fact no way for a caller to *reach* a `500` through the
+public API (every input error is a validated `4xx`), so this is defence in
+depth.
+
+**Considered and rejected:** a `DEBUG_ERRORS` / non-production toggle that echoes
+the exception (message + stack) in the response body. It adds a config branch
+and a well-known deployment footgun (shipping it enabled, or the environment
+gate being wrong) for no real gain: a developer running the service locally
+already sees the full error with stack in the terminal, next to the request
+line, and anyone actually working *on* the service has a debugger. The one
+scenario it helps — a third party hitting a shared non-prod instance whose logs
+they cannot see — is better solved by granting log access than by leaking stack
+traces over HTTP.
+
+## 10. Authentication / authorization — *documented, not implemented*
 
 The spec does not call for authentication and none is built. **All endpoints
 are unauthenticated**: any caller can create subscriptions, publish events, and
