@@ -532,6 +532,12 @@ Do not blindly install every package listed above if the selected project toolin
 
 The final `package.json` and lockfile are authoritative.
 
+> **Implementation note.** ESLint was replaced with **oxlint 1.80.0**:
+> `typescript-eslint` (required to lint TypeScript) hard-refuses the pinned
+> TypeScript 7.0. `oxlint` parses TS 7 natively and has no TypeScript-compiler
+> peer dependency. Type-level checking is covered by the strict `tsc` config.
+> See `docs/9 - decisions.md` §2.
+
 ---
 
 # 19. AWS SDK for JavaScript
