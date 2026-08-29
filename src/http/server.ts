@@ -7,7 +7,7 @@
  */
 
 import * as http from 'node:http';
-import { errorFields, type Logger } from '../infrastructure/logger.js';
+import { errorFields, LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
 import { errorResponse, toErrorResponse } from './problem.js';
 import type { HandlerResult, RequestContext, Router } from './router.js';
 
@@ -18,8 +18,12 @@ export interface HttpServerDeps {
 }
 
 export function createHttpServer(deps: HttpServerDeps): http.Server {
+  const scoped: HttpServerDeps = {
+    ...deps,
+    logger: deps.logger.child({ component: LOG_COMPONENTS.http }),
+  };
   return http.createServer((request, response) => {
-    void handleRequest(deps, request, response);
+    void handleRequest(scoped, request, response);
   });
 }
 
@@ -39,19 +43,23 @@ async function handleRequest(
   } catch (error) {
     const mapped = toErrorResponse(error);
     if (mapped.serverFault) {
-      deps.logger.error('request handler threw', { method, path, ...errorFields(error) });
+      deps.logger.error('http.request_error', {
+        httpMethod: method,
+        httpPath: path,
+        ...errorFields(error),
+      });
     }
     result = mapped.response;
   }
 
   writeResult(response, result);
 
-  const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
-  deps.logger.info('http request', {
-    method,
-    path,
-    status: result.status,
-    durationMs: Math.round(elapsedMs * 100) / 100,
+  const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+  deps.logger.info('http.request', {
+    httpMethod: method,
+    httpPath: path,
+    httpStatus: result.status,
+    durationMs: Math.round(durationMs * 100) / 100,
   });
 }
 

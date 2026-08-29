@@ -16,7 +16,8 @@
  */
 
 import { reclaimStuck } from '../domain/delivery.js';
-import { errorFields, type Logger } from '../infrastructure/logger.js';
+import { deliveryFields } from '../infrastructure/log-fields.js';
+import { errorFields, LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
 import type { Clock } from './clock.js';
 import type { DeliveryRepository } from './ports.js';
 
@@ -46,11 +47,13 @@ export interface RecoverySummary {
 
 export class RecoveryService {
   private readonly deps: RecoveryDeps;
+  private readonly log: Logger;
   private timer: ReturnType<typeof setInterval> | undefined;
   private running = false;
 
   constructor(deps: RecoveryDeps) {
     this.deps = deps;
+    this.log = deps.logger.child({ component: LOG_COMPONENTS.recovery });
   }
 
   /** Starts the periodic sweep. `intervalMs <= 0` disables it (no-op). */
@@ -58,13 +61,13 @@ export class RecoveryService {
     if (intervalMs <= 0 || this.timer !== undefined) {
       return;
     }
-    this.deps.logger.info('recovery sweep enabled', {
+    this.log.info('recovery.started', {
       intervalMs,
-      stuckThresholdMs: this.deps.config.stuckDeliveringThresholdMs,
+      stuckDeliveringThresholdMs: this.deps.config.stuckDeliveringThresholdMs,
     });
     this.timer = setInterval(() => {
       void this.runOnce().catch((error: unknown) => {
-        this.deps.logger.error('recovery sweep failed', errorFields(error));
+        this.log.error('recovery.sweep.failed', errorFields(error));
       });
     }, intervalMs);
     this.timer.unref();
@@ -87,12 +90,12 @@ export class RecoveryService {
     }
     this.running = true;
     try {
-      const reclaimed = await this.reclaimStuckDeliveries();
-      const resumed = await this.resumeDueDeliveries();
-      if (reclaimed > 0 || resumed > 0) {
-        this.deps.logger.info('recovery sweep', { reclaimed, resumed });
+      const reclaimedCount = await this.reclaimStuckDeliveries();
+      const resumedCount = await this.resumeDueDeliveries();
+      if (reclaimedCount > 0 || resumedCount > 0) {
+        this.log.info('recovery.sweep.completed', { reclaimedCount, resumedCount });
       }
-      return { reclaimed, resumed };
+      return { reclaimed: reclaimedCount, resumed: resumedCount };
     } finally {
       this.running = false;
     }
@@ -108,10 +111,8 @@ export class RecoveryService {
     );
     for (const delivery of stuck) {
       await this.deps.deliveries.save(reclaimStuck(delivery, this.deps.clock.now()));
-      this.deps.logger.debug('reclaimed stuck delivery', {
-        deliveryId: delivery.id,
-        eventId: delivery.eventId,
-        subscriptionId: delivery.subscriptionId,
+      this.log.debug('recovery.delivery.reclaimed', {
+        ...deliveryFields(delivery),
         lastAttemptAt: delivery.lastAttemptAt,
       });
     }

@@ -37,7 +37,8 @@ import {
   type RetryPolicy,
 } from '../domain/retry-policy.js';
 import type { Subscription } from '../domain/subscription.js';
-import { errorFields, type Logger } from '../infrastructure/logger.js';
+import { deliveryFields, outcomeFields } from '../infrastructure/log-fields.js';
+import { errorFields, LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
 import { SsrfBlockedError, type TargetUrlGuard } from '../infrastructure/ssrf-guard.js';
 import type { WebhookClient } from '../infrastructure/webhook-client.js';
 import type { Clock } from './clock.js';
@@ -68,6 +69,7 @@ export interface DispatcherDeps {
 
 export class Dispatcher implements EventDispatcher {
   private readonly deps: DispatcherDeps;
+  private readonly log: Logger;
   private readonly random: () => number;
   /** In-flight background dispatches + retry attempts, so shutdown/tests can await them. */
   private readonly inFlight = new Set<Promise<void>>();
@@ -76,16 +78,14 @@ export class Dispatcher implements EventDispatcher {
 
   constructor(deps: DispatcherDeps) {
     this.deps = deps;
+    this.log = deps.logger.child({ component: LOG_COMPONENTS.dispatcher });
     this.random = deps.random ?? Math.random;
   }
 
   dispatch(event: WebhookEvent): void {
     this.track(
       this.dispatchEvent(event).catch((error: unknown) => {
-        this.deps.logger.error('event dispatch failed', {
-          eventId: event.id,
-          ...errorFields(error),
-        });
+        this.log.error('dispatch.failed', { eventId: event.id, ...errorFields(error) });
       }),
     );
   }
@@ -118,22 +118,19 @@ export class Dispatcher implements EventDispatcher {
    */
   async dispatchEvent(event: WebhookEvent): Promise<void> {
     const subscriptions = await findSubscriptionsForEvent(this.deps.subscriptions, event);
-    this.deps.logger.info('dispatching event', {
+    this.log.info('dispatch.started', {
       eventId: event.id,
-      type: event.type,
-      matchedSubscriptions: subscriptions.length,
+      eventType: event.type,
+      matchedCount: subscriptions.length,
     });
 
     const results = await Promise.allSettled(
       subscriptions.map((subscription) => this.deliverToSubscription(event, subscription)),
     );
 
-    const failedToRecord = results.filter((result) => result.status === 'rejected').length;
-    if (failedToRecord > 0) {
-      this.deps.logger.error('some deliveries could not be recorded', {
-        eventId: event.id,
-        count: failedToRecord,
-      });
+    const failedRecordCount = results.filter((result) => result.status === 'rejected').length;
+    if (failedRecordCount > 0) {
+      this.log.error('dispatch.partial_failure', { eventId: event.id, failedRecordCount });
     }
   }
 
@@ -149,18 +146,15 @@ export class Dispatcher implements EventDispatcher {
       now: this.deps.clock.now(),
     });
     await this.deps.deliveries.save(delivery);
-    this.deliveryLogger(delivery, event.id).debug('delivery record created');
+    this.deps.logger
+      .child({ component: LOG_COMPONENTS.dispatcher, ...deliveryFields(delivery) })
+      .debug('delivery.created');
     await this.attemptDelivery(delivery, event);
   }
 
-  /** A logger scoped to one delivery: carries the four correlation ids + target host. */
-  private deliveryLogger(delivery: Delivery, eventId: string): Logger {
-    return this.deps.logger.child({
-      eventId,
-      subscriptionId: delivery.subscriptionId,
-      deliveryId: delivery.id,
-      targetHost: hostnameOf(delivery.targetUrl),
-    });
+  /** A logger scoped to one delivery attempt: correlation ids + target host + attempt number. */
+  private attemptLogger(delivery: Delivery): Logger {
+    return this.log.child({ ...deliveryFields(delivery), attempt: delivery.attempts });
   }
 
   /** One delivery attempt: mark delivering, POST, then deliver / retry / fail. */
@@ -168,7 +162,7 @@ export class Dispatcher implements EventDispatcher {
     const attempting = beginAttempt(delivery, this.deps.clock.now());
     await this.deps.deliveries.save(attempting);
 
-    const log = this.deliveryLogger(attempting, event.id).child({ attempt: attempting.attempts });
+    const log = this.attemptLogger(attempting);
 
     // Re-check the target at delivery time: the subscription may have been
     // registered when the host resolved to a public address and now resolve to a
@@ -183,7 +177,7 @@ export class Dispatcher implements EventDispatcher {
           now: this.deps.clock.now(),
         });
         await this.deps.deliveries.save(failed);
-        log.warn('delivery blocked by SSRF guard', { host: error.host, reason: error.reason });
+        log.warn('delivery.blocked', { reason: error.reason });
         return;
       }
       throw error;
@@ -200,13 +194,13 @@ export class Dispatcher implements EventDispatcher {
       },
       timeoutMs: this.deps.config.webhookTimeoutMs,
     });
-    const elapsedMs = Date.now() - startedAt;
+    const durationMs = Date.now() - startedAt;
     const classification = classifyOutcome(outcome);
 
     if (classification === 'success' && outcome.kind === 'success') {
       const delivered = completeDelivered(attempting, outcome.statusCode, this.deps.clock.now());
       await this.deps.deliveries.save(delivered);
-      log.info('delivery succeeded', { statusCode: outcome.statusCode, elapsedMs });
+      log.info('delivery.succeeded', { ...outcomeFields(outcome), durationMs });
       return;
     }
 
@@ -214,7 +208,7 @@ export class Dispatcher implements EventDispatcher {
       classification === 'retryable' &&
       hasAttemptsRemaining(attempting.attempts, this.deps.config.retryPolicy)
     ) {
-      await this.scheduleRetryAttempt(attempting, event, outcome, log, elapsedMs);
+      await this.scheduleRetryAttempt(attempting, event, outcome, log, durationMs);
       return;
     }
 
@@ -224,13 +218,13 @@ export class Dispatcher implements EventDispatcher {
       now: this.deps.clock.now(),
     });
     await this.deps.deliveries.save(failed);
-    log.warn('delivery failed permanently', {
-      classification,
-      reason: classification === 'permanent' ? 'non-retryable response' : 'retry budget exhausted',
-      statusCode: failed.lastStatusCode,
+    log.warn('delivery.failed', {
+      ...outcomeFields(outcome),
+      reason: classification === 'permanent' ? 'non_retryable_response' : 'retry_budget_exhausted',
       error: failed.lastError,
-      attempts: failed.attempts,
-      elapsedMs,
+      attempt: failed.attempts,
+      maxAttempts: this.deps.config.retryPolicy.maxAttempts,
+      durationMs,
     });
   }
 
@@ -239,7 +233,7 @@ export class Dispatcher implements EventDispatcher {
     event: WebhookEvent,
     outcome: AttemptOutcome,
     log: Logger,
-    elapsedMs: number,
+    durationMs: number,
   ): Promise<void> {
     const delayMs = computeBackoffMs(
       attempting.attempts,
@@ -254,13 +248,13 @@ export class Dispatcher implements EventDispatcher {
       now: this.deps.clock.now(),
     });
     await this.deps.deliveries.save(retrying);
-    log.warn('delivery attempt failed; scheduling retry', {
-      classification: 'retryable',
-      statusCode: retrying.lastStatusCode,
+    log.warn('delivery.retry_scheduled', {
+      ...outcomeFields(outcome),
       error: retrying.lastError,
-      elapsedMs,
+      durationMs,
       backoffMs: delayMs,
       nextAttemptAt: retrying.nextAttemptAt,
+      maxAttempts: this.deps.config.retryPolicy.maxAttempts,
     });
 
     let cancel: () => void = () => {};
@@ -268,7 +262,7 @@ export class Dispatcher implements EventDispatcher {
       this.scheduledRetries.delete(cancel);
       this.track(
         this.resumeDelivery(retrying.id).catch((error: unknown) => {
-          log.error('retry attempt failed to run', errorFields(error));
+          log.error('delivery.retry_error', errorFields(error));
         }),
       );
     }, delayMs);
@@ -286,15 +280,16 @@ export class Dispatcher implements EventDispatcher {
     if (delivery === undefined || delivery.status !== 'pending') {
       return;
     }
-    const log = this.deliveryLogger(delivery, delivery.eventId);
+    const log = this.log.child(deliveryFields(delivery));
 
     if (!hasAttemptsRemaining(delivery.attempts, this.deps.config.retryPolicy)) {
       await this.deps.deliveries.save(
         abandonDelivery(delivery, 'retry limit reached', this.deps.clock.now()),
       );
-      log.warn('delivery abandoned', {
-        reason: 'retry limit reached',
-        attempts: delivery.attempts,
+      log.warn('delivery.abandoned', {
+        reason: 'retry_budget_exhausted',
+        attempt: delivery.attempts,
+        maxAttempts: this.deps.config.retryPolicy.maxAttempts,
       });
       return;
     }
@@ -304,7 +299,7 @@ export class Dispatcher implements EventDispatcher {
       await this.deps.deliveries.save(
         abandonDelivery(delivery, 'source event no longer available', this.deps.clock.now()),
       );
-      log.warn('delivery abandoned', { reason: 'source event no longer available' });
+      log.warn('delivery.abandoned', { reason: 'source_event_missing' });
       return;
     }
 
@@ -330,14 +325,5 @@ function describeOutcome(outcome: AttemptOutcome): string {
       return 'request timed out';
     case 'network-error':
       return `network error: ${outcome.message}`;
-  }
-}
-
-/** Host portion of a URL for logging (never the full URL, which may carry a path secret). */
-function hostnameOf(rawUrl: string): string {
-  try {
-    return new URL(rawUrl).hostname;
-  } catch {
-    return 'invalid-url';
   }
 }

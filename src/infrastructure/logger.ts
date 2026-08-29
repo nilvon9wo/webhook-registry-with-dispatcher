@@ -1,10 +1,20 @@
 /**
- * Minimal structured logger: one JSON object per line to stdout (`debug`/`info`)
+ * Minimal structured logger: one JSON object per line, to stdout (`debug`/`info`)
  * or stderr (`warn`/`error`). No dependency, proportional to the challenge.
  *
- * `child(fields)` returns a logger that merges `fields` into every line, used to
- * carry correlation ids (eventId, subscriptionId, deliveryId, attempt) through
- * the dispatch path.
+ * Conventions (full reference: `docs/11 - logging.md`):
+ *
+ *   - Every line is `{ time, level, message, component, ...fields }`.
+ *   - `message` is a **stable, dot-namespaced event identifier** — e.g.
+ *     `delivery.succeeded`, `recovery.sweep.completed` — never a free-form
+ *     sentence. It is safe to alert / group / filter on.
+ *   - `component` names the subsystem (see {@link LOG_COMPONENTS}); set once per
+ *     subsystem with `logger.child({ component })`.
+ *   - Field names come from the shared dictionary in `docs/11`; repeated field
+ *     groups are built with the helpers in `./log-fields.ts` so the same concept
+ *     always serialises identically.
+ *   - `child(fields)` merges `fields` into every subsequent line — used to carry
+ *     correlation ids (`eventId`, `subscriptionId`, `deliveryId`, `attempt`).
  */
 
 import type { LogLevel } from '../config.js';
@@ -18,6 +28,18 @@ export interface Logger {
   error(message: string, fields?: LogFields): void;
   child(fields: LogFields): Logger;
 }
+
+/** Canonical `component` values. */
+export const LOG_COMPONENTS = {
+  bootstrap: 'bootstrap',
+  http: 'http',
+  eventService: 'event-service',
+  dispatcher: 'dispatcher',
+  recovery: 'recovery',
+  persistence: 'persistence',
+} as const;
+
+export type LogComponent = (typeof LOG_COMPONENTS)[keyof typeof LOG_COMPONENTS];
 
 const LEVEL_ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
@@ -65,11 +87,11 @@ export function createLogger(options: LoggerOptions): Logger {
   return build({});
 }
 
-/** Consistent `{ error, stack }` fields for logging a caught value. */
-export function errorFields(error: unknown): { error: string; stack?: string } {
+/** Consistent `{ error, errorStack }` fields for logging a caught value. */
+export function errorFields(error: unknown): { error: string; errorStack?: string } {
   if (error instanceof Error) {
     return error.stack !== undefined
-      ? { error: error.message, stack: error.stack }
+      ? { error: error.message, errorStack: error.stack }
       : { error: error.message };
   }
   return { error: String(error) };

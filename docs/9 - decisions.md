@@ -141,18 +141,18 @@ It is a living document, updated as implementation proceeds.
   states — `pending | delivering | delivered | failed` as the spec suggests.
 - **AuthN/AuthZ:** out of scope; documented as an assumption.
 
-- **Observability review (prompt 17):** structured JSON logs; every
-  delivery-scoped line carries `eventId` + `subscriptionId` + `deliveryId` +
-  `attempt` (+ `targetHost`, host only) via a `child` logger. Outcome logs
-  include `classification`, `statusCode`, `elapsedMs`, and (on a retry)
-  `backoffMs` / `nextAttemptAt`; a permanent failure logs whether it was a
-  non-retryable response or an exhausted budget. Recovery logs each reclaim
-  (debug) and every abandon (warn) with correlation ids. `errorFields(err)`
-  gives consistent `{ error, stack }`. No log line contains the event payload,
-  a request/response body, a full target URL, or a credential (asserted by
-  test). `index.ts` logs `unhandledRejection` / `uncaughtException`. A
-  per-HTTP-request id is noted as a future addition (`eventId` is the primary
-  correlation key today).
+- **Observability / structured logging (prompts 17 + follow-up):** every log
+  line is a JSON object with a **stable dot-namespaced `message`** (an event
+  identifier, not a sentence), a **`component`** field, and fields drawn from a
+  fixed dictionary. Recurring field groups are built by helpers in
+  `src/infrastructure/log-fields.ts` so a concept always serialises identically.
+  Full reference — line shape, correlation model, field dictionary, and the
+  event catalogue — is **`docs/11 - logging.md`**. Delivery-scoped lines carry
+  `eventId` + `subscriptionId` + `deliveryId` + `attempt` + `targetHost` (host
+  only). No line contains an event payload, a request/response body, a full
+  target URL, or a credential (asserted by test). `index.ts` logs
+  `process.unhandled_rejection` / `process.uncaught_exception`. A
+  per-HTTP-request id is a noted future addition.
 
 - **Configuration review (prompt 15):** every operational setting in the spec §12
   list is an env var with a safe default and aggregated validation

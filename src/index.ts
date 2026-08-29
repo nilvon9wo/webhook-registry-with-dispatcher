@@ -6,7 +6,7 @@
 import { buildApplication } from './container.js';
 import type { AppConfig } from './config.js';
 import { ConfigError, configSummary, configWarnings, loadConfig } from './config.js';
-import { errorFields } from './infrastructure/logger.js';
+import { errorFields, LOG_COMPONENTS } from './infrastructure/logger.js';
 
 function loadConfigOrExit(): AppConfig | undefined {
   try {
@@ -28,26 +28,27 @@ function main(): void {
   }
 
   const app = buildApplication(config);
+  const log = app.logger.child({ component: LOG_COMPONENTS.bootstrap });
 
-  app.logger.info('configuration loaded', configSummary(config));
+  log.info('config.loaded', { config: configSummary(config) });
   for (const warning of configWarnings(config)) {
-    app.logger.warn('configuration warning', { warning });
+    log.warn('config.warning', { detail: warning });
   }
 
   process.on('unhandledRejection', (reason) => {
-    app.logger.error('unhandled promise rejection', errorFields(reason));
+    log.error('process.unhandled_rejection', errorFields(reason));
   });
   process.on('uncaughtException', (error) => {
-    app.logger.error('uncaught exception', errorFields(error));
+    log.error('process.uncaught_exception', errorFields(error));
   });
 
   app.httpServer.listen(config.port, () => {
-    app.logger.info('server listening', { port: config.port, persistence: config.persistence });
+    log.info('server.listening', { port: config.port, persistence: config.persistence });
   });
   app.recovery.start(config.recovery.intervalMs);
 
   const shutdown = (signal: string): void => {
-    app.logger.info('shutting down', { signal });
+    log.info('server.stopping', { signal });
     app.recovery.stop();
     app.httpServer.close(() => process.exit(0));
     // Failsafe: do not hang forever if connections do not drain.

@@ -37,7 +37,7 @@ import {
   DynamoEventRepository,
   DynamoSubscriptionRepository,
 } from './infrastructure/dynamodb/dynamodb-repositories.js';
-import { createLogger, type Logger } from './infrastructure/logger.js';
+import { createLogger, LOG_COMPONENTS, type Logger } from './infrastructure/logger.js';
 import { registerHealthRoute } from './http/handlers/health.js';
 import { registerEventRoutes } from './http/handlers/events.js';
 import { registerSubscriptionRoutes } from './http/handlers/subscriptions.js';
@@ -64,18 +64,20 @@ export interface Application {
 }
 
 export function buildRepositories(config: AppConfig, logger: Logger): Repositories {
+  const log = logger.child({ component: LOG_COMPONENTS.persistence });
   switch (config.persistence) {
     case 'memory':
-      logger.info('using in-memory persistence');
+      log.info('persistence.selected', { persistence: 'memory' });
       return {
         subscriptions: new InMemorySubscriptionRepository(),
         events: new InMemoryEventRepository(),
         deliveries: new InMemoryDeliveryRepository(),
       };
     case 'dynamodb': {
-      logger.info('using DynamoDB persistence', {
-        region: config.aws.region,
-        endpoint: config.aws.dynamoEndpoint ?? 'aws',
+      log.info('persistence.selected', {
+        persistence: 'dynamodb',
+        awsRegion: config.aws.region,
+        dynamoEndpoint: config.aws.dynamoEndpoint ?? null,
       });
       const client = createDynamoDocumentClient({
         region: config.aws.region,

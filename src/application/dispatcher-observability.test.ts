@@ -79,8 +79,25 @@ async function runDispatch(outcome: AttemptOutcome): Promise<CapturingLogger> {
   return logger;
 }
 
-describe('dispatch logging — correlation', () => {
-  it('tags every delivery-scoped line with eventId, subscriptionId, deliveryId and attempt', async () => {
+describe('dispatch logging — conventions', () => {
+  it('names every line with a stable dotted identifier and a component', async () => {
+    // Arrange
+    const logger = await runDispatch({ kind: 'http-error', statusCode: 503 });
+
+    // Act
+    const messages = logger.lines.map((line) => line.message);
+
+    // Assert
+    for (const line of logger.lines) {
+      expect(line.message).toMatch(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/);
+      expect(line.fields.component).toBe('dispatcher');
+    }
+    expect(messages).toEqual(
+      expect.arrayContaining(['dispatch.started', 'delivery.retry_scheduled', 'delivery.failed']),
+    );
+  });
+
+  it('tags every delivery-scoped line with the correlation fields', async () => {
     // Arrange — a delivery that fails once then is retried.
     const logger = await runDispatch({ kind: 'http-error', statusCode: 503 });
 
@@ -101,17 +118,27 @@ describe('dispatch logging — correlation', () => {
     expect(deliveryLines.some((line) => line.fields.attempt === 2)).toBe(true);
   });
 
-  it('records attempt outcome with status/classification/elapsed, and a retry with its backoff', async () => {
+  it('uses the dictionary field names for outcome, backoff and retry limits', async () => {
     // Arrange
     const logger = await runDispatch({ kind: 'http-error', statusCode: 503 });
 
     // Act
-    const retryLine = logger.lines.find((line) => line.message.includes('scheduling retry'));
-    const failLine = logger.lines.find((line) => line.message.includes('failed permanently'));
+    const retryLine = logger.lines.find((line) => line.message === 'delivery.retry_scheduled');
+    const failLine = logger.lines.find((line) => line.message === 'delivery.failed');
 
     // Assert
-    expect(retryLine?.fields).toMatchObject({ classification: 'retryable', backoffMs: 1 });
-    expect(failLine?.fields).toMatchObject({ reason: 'retry budget exhausted', attempts: 2 });
+    expect(retryLine?.fields).toMatchObject({
+      outcome: 'retryable',
+      httpStatus: 503,
+      backoffMs: 1,
+      maxAttempts: 2,
+    });
+    expect(failLine?.fields).toMatchObject({
+      outcome: 'retryable',
+      reason: 'retry_budget_exhausted',
+      attempt: 2,
+      maxAttempts: 2,
+    });
   });
 });
 

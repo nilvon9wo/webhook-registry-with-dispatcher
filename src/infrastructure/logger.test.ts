@@ -89,10 +89,10 @@ describe('errorFields', () => {
 
     // Assert
     expect(fields.error).toBe('boom');
-    expect(fields.stack).toContain('Error: boom');
+    expect(fields.errorStack).toContain('Error: boom');
   });
 
-  it('stringifies a non-Error and omits stack', () => {
+  it('stringifies a non-Error and omits the stack', () => {
     // Arrange
     const thrown = 'just a string';
 

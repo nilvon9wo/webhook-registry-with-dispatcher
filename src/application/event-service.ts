@@ -12,7 +12,8 @@
 
 import { createEvent, parseEventInput, type WebhookEvent } from '../domain/event.js';
 import type { IdGenerator } from '../domain/ids.js';
-import type { Logger } from '../infrastructure/logger.js';
+import { eventFields } from '../infrastructure/log-fields.js';
+import { LOG_COMPONENTS, type Logger } from '../infrastructure/logger.js';
 import type { Clock } from './clock.js';
 import type { EventRepository } from './ports.js';
 
@@ -48,7 +49,7 @@ export class EventService {
     this.dispatcher = deps.dispatcher;
     this.clock = deps.clock;
     this.ids = deps.ids;
-    this.logger = deps.logger;
+    this.logger = deps.logger.child({ component: LOG_COMPONENTS.eventService });
   }
 
   /**
@@ -61,7 +62,7 @@ export class EventService {
     const event = createEvent(input, this.ids.next('event'), this.clock.now());
 
     await this.repository.save(event);
-    this.logger.info('event accepted', { eventId: event.id, type: event.type });
+    this.logger.info('event.accepted', eventFields(event));
 
     this.dispatcher.dispatch(event);
     return event;
