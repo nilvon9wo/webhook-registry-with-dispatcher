@@ -623,15 +623,17 @@ restart, and the attempt cap is still honoured.
 
 ### R6 — recovery leaves completed deliveries alone
 
-After R1 (a `delivered` delivery on record), restart the service and watch a few
-sweep cycles. With `LOG_LEVEL=debug` (your `.env`) each sweep logs
-`recovery.sweep.completed reclaimedCount=0 resumedCount=0` at **debug** — i.e.
-it ran and found nothing to do. (At `info` a no-op sweep is silent; it goes to
-`info` only when it actually reclaims/resumes something.) The delivered delivery
-is never re-sent; the inbox count for that path does not increase.
+After R1 (a `delivered` delivery on record), restart the service and let it run
+for a while. Recovery is a periodic safety net — it sweeps every
+`RECOVERY_INTERVAL_MS` for the whole life of the process, not once at startup.
+With `LOG_LEVEL=debug` you see **one** `recovery.sweep.completed reclaimedCount=0
+resumedCount=0` (debug) shortly after `recovery.started` — the sweeper reporting
+it is idle — then **silence**. It does not log every idle tick. (It would log
+again at `info` only if a later sweep actually reclaimed/resumed something.)
 
-**Expect:** steady `recovery.sweep.completed` (debug, all-zero) lines, no
-`delivery.*` activity, inbox unchanged.
+**Expect:** `recovery.started`, then one idle `recovery.sweep.completed`, then
+quiet; no `delivery.*` activity; the delivered delivery is never re-sent; inbox
+count unchanged.
 
 ---
 

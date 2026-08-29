@@ -287,7 +287,7 @@ describe('RecoveryService.runOnce — sweep logging', () => {
   const sweepLine = (logger: ReturnType<typeof createCapturingLogger>, message: string) =>
     logger.lines.find((line) => line.message === message);
 
-  it('logs recovery.sweep.completed at debug when the sweep does nothing', async () => {
+  it('logs recovery.sweep.completed at debug when the sweeper goes idle', async () => {
     // Arrange
     const logger = createCapturingLogger();
     const harness = newHarness(logger);
@@ -300,6 +300,21 @@ describe('RecoveryService.runOnce — sweep logging', () => {
       level: 'debug',
       fields: { reclaimedCount: 0, resumedCount: 0 },
     });
+  });
+
+  it('logs the idle sweep once, not on every subsequent no-op sweep', async () => {
+    // Arrange
+    const logger = createCapturingLogger();
+    const harness = newHarness(logger);
+
+    // Act — three consecutive no-op sweeps.
+    await harness.recovery.runOnce();
+    await harness.recovery.runOnce();
+    await harness.recovery.runOnce();
+
+    // Assert
+    const completions = logger.lines.filter((line) => line.message === 'recovery.sweep.completed');
+    expect(completions).toHaveLength(1);
   });
 
   it('logs recovery.sweep.completed at info when the sweep re-drives a delivery', async () => {

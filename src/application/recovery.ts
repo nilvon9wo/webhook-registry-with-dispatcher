@@ -50,6 +50,8 @@ export class RecoveryService {
   private readonly log: Logger;
   private timer: ReturnType<typeof setInterval> | undefined;
   private running = false;
+  /** True once an idle (no-op) sweep has been logged; reset when a sweep does work. */
+  private idleLogged = false;
 
   constructor(deps: RecoveryDeps) {
     this.deps = deps;
@@ -93,14 +95,17 @@ export class RecoveryService {
     try {
       const reclaimedCount = await this.reclaimStuckDeliveries();
       const resumedCount = await this.resumeDueDeliveries();
-      // Every sweep logs a completion line so "ran, nothing to do" is distinct
-      // from "started but never finished". A productive sweep is `info`; a
-      // no-op is `debug` to keep a quiet system's log quiet.
       const fields = { reclaimedCount, resumedCount };
       if (reclaimedCount > 0 || resumedCount > 0) {
+        // A sweep that recovered something: always logged, at `info`.
         this.log.info('recovery.sweep.completed', fields);
-      } else {
+        this.idleLogged = false;
+      } else if (!this.idleLogged) {
+        // The sweeper has just gone idle (at start, or after doing work): log
+        // one `debug` line so an idle-but-alive sweeper is distinguishable from
+        // a stuck one, then stay quiet on the steady state.
         this.log.debug('recovery.sweep.completed', fields);
+        this.idleLogged = true;
       }
       return { reclaimed: reclaimedCount, resumed: resumedCount };
     } finally {

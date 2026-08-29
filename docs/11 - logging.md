@@ -148,7 +148,7 @@ same way. New logging code must reuse these names.
 | `delivery.blocked` | warn | dispatcher | SSRF guard blocked the target at delivery time |
 | `delivery.abandoned` | warn | dispatcher | recovery gave up (budget spent / event gone) |
 | `recovery.started` | info | recovery | sweeper enabled (once, at boot) |
-| `recovery.sweep.completed` | info / debug | recovery | end of **every** sweep — `info` when it reclaimed/resumed something (`reclaimedCount` / `resumedCount`), `debug` when it was a no-op. Its absence after `recovery.started` means a sweep is stuck |
+| `recovery.sweep.completed` | info / debug | recovery | `info` **every** time a sweep reclaims/resumes something (`reclaimedCount` / `resumedCount`); `debug` **once** when the sweeper goes idle (at start, or after a productive sweep), then quiet. `recovery.started` with no completion line at all → a sweep is stuck |
 | `recovery.sweep.skipped` | debug | recovery | a tick was skipped because the previous sweep was still running (`reason: previous_sweep_in_progress`) |
 | `recovery.sweep.failed` | error | recovery | a sweep threw |
 | `recovery.delivery.reclaimed` | debug | recovery | a stuck delivery returned to `pending` |
