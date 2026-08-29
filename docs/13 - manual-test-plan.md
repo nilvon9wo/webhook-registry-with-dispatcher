@@ -70,11 +70,9 @@ DYNAMODB_DELIVERIES_TABLE=webhook-registry-deliveries
 A few scenarios (SSRF) need the guard **on** — they say so and give an inline
 override.
 
-**On `PERSISTENCE=dynamodb`** you can use `npm run dev` freely — a restart (or a
-watch reload) does not lose data. On `memory`, prefer `npm run build && npm
-start` during a run so an editor save / a pulled change does not silently wipe
-your subscriptions. Either way, the `/deliveries` records you create against
-DynamoDB are real rows; §8.4 shows how to clear them.
+This run uses `npm start` (see §2.3). On `PERSISTENCE=dynamodb` the records you
+create are real DynamoDB rows and survive every restart; §8.4 shows how to clear
+them. On `memory`, every restart wipes everything.
 
 ### 2.2 Terminal 1 (Git Bash) — the webhook inbox (the "subscriber")
 
@@ -114,8 +112,18 @@ Make the subscriber misbehave by adding query params to the target URL:
 ### 2.3 Terminal 2 (Git Bash) — the service
 
 ```bash
-npm run dev
+npm run build && npm start
 ```
+
+**Use `npm start`, not `npm run dev`, for this run.** `npm run dev` is
+`tsx watch`, whose file-watcher supervisor does not always die on `Ctrl+C`
+(Windows) and auto-restarts the server when a source file changes — both of
+which cause `EADDRINUSE` / lost state during the restart-heavy F2/F3/R3 steps.
+`npm start` runs a plain `node` process that `Ctrl+C` kills cleanly. Re-run
+`npm run build` only when you want newer code. (If a start ever fails with
+`server.listen_failed … port … already in use`, a previous server is still
+running — find it with `netstat -ano | grep :3000 | grep LISTENING` and
+`taskkill //F //PID <pid>`.)
 
 Watch this terminal. With `LOG_FORMAT=pretty` (set in the `.env` above) each
 entry is one coloured line — `LEVEL  message  key=value …  component time` —
@@ -159,12 +167,11 @@ hand, e.g. `SUB1=sub_093505e2-…`.
 
 **If you are on `PERSISTENCE=memory`, state does not survive a restart.** The
 in-process store keeps subscriptions, events, and deliveries in RAM; restarting
-`npm run dev` — for any reason, including a `tsx watch` reload when a source file
-changes — **wipes all of it**. Your shell still holds the old `$SUB1` string, but
-the server has forgotten that id, so the next `PUT` / `GET` / `DELETE` on it
-returns `404` (not a bug — this is exactly why the challenge requires external
-storage). **On `PERSISTENCE=dynamodb` (§2.1) this is a non-issue** — restart as
-often as you like.
+the server (F2/F3/R3/R5 all do) **wipes all of it**. Your shell still holds the
+old `$SUB1` string, but the server has forgotten that id, so the next `PUT` /
+`GET` / `DELETE` on it returns `404` (not a bug — this is exactly why the
+challenge requires external storage). **On `PERSISTENCE=dynamodb` (§2.1) this is
+a non-issue** — restart as often as you like.
 
 After any restart, **re-create and re-capture** before continuing:
 
@@ -391,17 +398,19 @@ curl -i -X POST localhost:3000/subscriptions -H 'content-type: application/json'
 naming the problem. Nothing is persisted.
 
 > **F2 and F3 each need a differently-configured server, so they restart it.**
-> `npm run dev` runs in the foreground and never returns, so it and the `curl`
-> commands are **separate terminals**: start/restart the server in terminal 2,
-> wait for its `server.listening` line, then run the `curl` in your curl
-> terminal. After F3, `Ctrl+C` terminal 2 and start plain `npm run dev` again.
+> The server runs in the foreground and never returns, so it and the `curl`
+> commands are **separate terminals**: in terminal 2 press `Ctrl+C`, start the
+> server with the shown env override, wait for its `server.listening` line, then
+> run the `curl` in your curl terminal. After F3, `Ctrl+C` terminal 2 and start
+> plain `npm start` again. (`dist/` is already built from §2.3; no rebuild
+> needed just to change an env var.)
 
 ### F2 — non-HTTPS target when the strict policy is in effect
 
 Terminal 2 — `Ctrl+C`, then:
 
 ```bash
-ALLOW_INSECURE_TARGET_URLS=false npm run dev
+ALLOW_INSECURE_TARGET_URLS=false npm start
 ```
 
 Curl terminal:
@@ -418,7 +427,7 @@ curl -i -X POST localhost:3000/subscriptions -H 'content-type: application/json'
 Terminal 2 — `Ctrl+C`, then:
 
 ```bash
-SSRF_GUARD_ENABLED=true ALLOW_INSECURE_TARGET_URLS=true npm run dev
+SSRF_GUARD_ENABLED=true ALLOW_INSECURE_TARGET_URLS=true npm start
 ```
 
 Curl terminal:
@@ -433,7 +442,7 @@ curl -i -X POST localhost:3000/subscriptions -H 'content-type: application/json'
 **Expect:** each `400`, detail `targetUrl rejected: … loopback / private /
 link-local / cloud-metadata address`. A public `https://` target still works
 (try one against your `webhook.site` URL). Then `Ctrl+C` terminal 2 and restart
-plain `npm run dev` before F4.
+plain `npm start` before F4.
 
 ### F4 — invalid event bodies
 
@@ -533,7 +542,7 @@ Needs a short webhook timeout, so restart the service first.
 **Terminal 2** — `Ctrl+C`, then (wait for `server.listening`):
 
 ```bash
-WEBHOOK_TIMEOUT_MS=1000 npm run dev
+WEBHOOK_TIMEOUT_MS=1000 npm start
 ```
 
 **Curl terminal:**
@@ -549,7 +558,7 @@ curl -s "localhost:3000/deliveries?eventId=$EVT"
 **Expect:** each attempt times out after ~1 s (the inbox still logs the request —
 it received it, it just answers late); the delivery retries and finally `failed`
 with `lastError` mentioning a timeout. Then `Ctrl+C` terminal 2 and restart plain
-`npm run dev`.
+`npm start`.
 
 ### R4 — non-retryable failure is not retried
 
@@ -580,7 +589,7 @@ curl -s "localhost:3000/deliveries?eventId=$EVT"    # status: pending, nextAttem
 2. **Within the ~1 s before the retry fires, kill the service** in terminal 2
    (`Ctrl+C`, or kill the PID to simulate a hard crash — see §5 note below). The
    in-process retry timer dies with it.
-3. **Restart** `npm run dev`. Within `RECOVERY_INTERVAL_MS` (5 s) the log shows
+3. **Restart** `npm start`. Within `RECOVERY_INTERVAL_MS` (5 s) the log shows
    `recovery.started` then `recovery.sweep.completed` with `resumedCount: 1`, and
    `curl -s "localhost:3000/deliveries?eventId=$EVT"` shows `attempts`
    incremented — recovery re-drove it. It keeps retrying `/crash` until the
