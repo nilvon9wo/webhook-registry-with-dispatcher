@@ -3808,3 +3808,96 @@ Please put the final report into its own md file, and add references to both thi
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run test:all 2>&1 | grep -E "Tests|Test Files" | tail -3 && git add -A && git commit -q -m "$(cat <<…
 - 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/clean-checkout…
 - 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/clean-checkout…
+- 🔧 `Bash` — rm -rf "/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/clean-checkout"…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git commit -q -m "$(cat <<'EOF' Regenerate docs/ai-conversation.md for packaging Final export of the ses…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && ZIP="webhook-registry-dispatcher.zip" && rm -f "$ZIP" && git archive --format=zip --prefix=webhook-regis…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && ZIP="webhook-registry-dispatcher.zip" && echo "=== files matching risky patterns (excluding the OK .env.…
+- 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/zip-verify" rm…
+- 🔧 `Bash` — rm -rf "/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/zip-verify" cd …
+Done. Everything checks out and the package is built.
+
+## `docs/14 - final-report.md`
+
+Standalone submission report — the release-check table plus the six requested sections. Linked from the README in two places:
+- **Documentation → Start here** table (first row, bold "Submission report")
+- **Status** section (with the decision record and AI conversation)
+
+`docs/ai-conversation.md` is linked under **Documentation → AI development process**.
+
+## Pre-package verification
+
+| | |
+|---|---|
+| Clean-checkout test | Extracted `git archive HEAD` to a fresh dir → `npm ci` (85 pkgs, 0 vulns) → `npm run build` → `npm run check` → **319 passed, 17 skipped**, exit 0 |
+| ZIP is a working package | Extracted `webhook-registry-dispatcher.zip` → `npm ci` → `npm test` → **313 passed, 17 skipped** → `npm run build` → `dist/index.js` present |
+| Full suite incl. real DynamoDB | **336 passed, 0 skipped**; 3 tables, no test orphans |
+| ZIP contents | 129 entries, no `.env` / `node_modules` / `.idea` / `dist` / `.git` / `coverage`; `.env.example` and `.gitignore`/`.gitattributes` included (intended) |
+| Working tree | clean; all work committed on `implementation` |
+
+## The package
+
+```
+E:\projects\TypeScript\Genesys Coding Challenge\webhook-registry-dispatcher.zip   (328 KB)
+```
+
+Built with `git archive --prefix=webhook-registry-dispatcher/ HEAD` — tracked files only, extracts to a single named folder.
+
+## Notes
+
+- The `docs/ai-conversation.md` inside the ZIP is current through the start of this turn (66 user messages / 77 assistant replies / 1142 tool calls). It can't contain this closing handoff — the report's §6.2 explains that. If you want that last bit captured, run `npm run export:conversation`, `git add`/`commit`, and re-run the `git archive` line — it'll still miss *that* turn, so there's a natural stopping point.
+- The repo is on branch `implementation`. Irrelevant to the ZIP (no history is included), but if you want the repo itself tidy, `git switch master && git merge implementation` is the only remaining housekeeping — your call, not part of the deliverable.
+
+## User
+
+It's probably not worth changing now, but when I mentioned generic variable names, you seemed to believe that was in the original brief (doc/0), but the word "data" is only mentioned there in that it must be persisted.  There is nothing specifying the shape of the input.
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -rn "challenge\|brief\|docs/0\|CloudEvents\|examples use\|the type is the information" "docs/9 - de…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sed -n '43,56p' "docs/9 - decisions.md" && echo "..." && grep -n "data\b" "docs/1 - spec.md" | head
+You're right, and thanks for the correction.
+
+`docs/0` mentions "data" once — *"Data must be persisted to external storage"* — which is about persistence, not the request body. It says nothing about the event shape, and requirement #9 is explicitly *"Should you find any gaps in this spec, fill them yourself."*
+
+The `{ type, data }` shape comes from **`docs/1 - spec.md`** (the project's own spec, written in the pre-implementation phase and treated as authoritative) plus the **CloudEvents** convention. That's a fine basis for keeping `data` — but I was sloppy in that earlier message when I said "the challenge's own examples," conflating the terse original brief with the project spec.
+
+The good news: the imprecision was only in chat. The committed docs get it right — `docs/1`, `docs/9`, and `docs/14` all attribute `data` to CloudEvents and the spec, never to `docs/0`. So **nothing to fix in the package** — the ZIP stands as built.
+
+## User
+
+Before I submit, let's do one last sanity check against the original brief (doc/0).  Please confirm we've done everything either asked for or hinted at, including all the bonus materials and that there are no "gaps" worth filling (e.g. it would take less than 20  minutes to do it.)
+
+## Assistant
+
+- 🔧 `Read` — docs/0 - SW Engineer task - WebhookRegistryTask.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== event-service.ts ===" && cat src/application/event-service.ts && echo && echo "=== EventReposi…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "NotFound\|not found\|404\|class.*Error" src/application/subscription-service.ts src/application…
+- 🔧 `AskUserQuestion` — {"questions":[{"question":"The brief lists `/events` under \"CRUD APIs\" but we implemented publish (POST) only — no `GET /events/{id}` read-back. `docs/1` expl…
+- 🔧 `Read` — src/application/subscription-service.ts
+- 🔧 `Edit` — src/application/event-service.ts
+- 🔧 `Edit` — src/application/event-service.ts
+- 🔧 `Edit` — src/http/handlers/events.ts
+- 🔧 `Read` — tests/integration/events-api.test.ts
+- 🔧 `Read` — tests/integration/events-api.test.ts
+- 🔧 `Edit` — tests/integration/events-api.test.ts
+- 🔧 `Read` — openapi.yaml
+- 🔧 `Edit` — openapi.yaml
+- 🔧 `Edit` — README.md
+- 🔧 `Read` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "does not necessarily need\|CRUD\|GET /events\|/events/{id}\|need not be a CRUD" "docs/1 - spec.…
+- 🔧 `Read` — docs/1 - spec.md
+- 🔧 `Edit` — docs/1 - spec.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Read` — requests.http
+- 🔧 `Edit` — requests.http
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run typecheck 2>&1 | tail -4 && npm run lint 2>&1 | tail -3 && npx vitest run --project integration …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write "src/http/handlers/events.ts" "src/application/event-service.ts" "tests/integration…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && for p in unit integration e2e; do echo -n "$p: "; npx vitest run --project $p 2>&1 | grep -E "Tests +[0-…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -rn "319 pass\|319 passed\|336 pass\|336 passed\|51 integration\|262 unit / 51\|319 / 17" README.md…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && python3 - <<'PY' import re, io edits = { "README.md": [ ("262 unit / 51 integration (+ 17 opt-in DynamoD…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md "docs/9 - decisions.md" "docs/12 - architecture-review.md" "docs/14 - fin…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && PORT=3990 PERSISTENCE=memory LOG_FORMAT=json node dist/index.js > /tmp/ev.log 2>&1 & S=$!; sleep 2 jv() …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run build >/dev/null 2>&1 && PORT=3990 PERSISTENCE=memory LOG_FORMAT=json node dist/index.js > /tmp/…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A && git commit -q -m "$(cat <<'EOF' Add GET /events/{id} — read back a published event docs/0 …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge npm run test:all 2>&1 | grep -E "Tests|Test Files" | …
