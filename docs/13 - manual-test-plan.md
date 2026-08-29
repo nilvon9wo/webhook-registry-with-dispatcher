@@ -390,25 +390,38 @@ curl -i -X POST localhost:3000/subscriptions -H 'content-type: application/json'
 **Expect:** each is `400` with `{"error":{"message":"Validation failed","details":[…]}}`
 naming the problem. Nothing is persisted.
 
+> **F2 and F3 each need a differently-configured server, so they restart it.**
+> `npm run dev` runs in the foreground and never returns, so it and the `curl`
+> commands are **separate terminals**: start/restart the server in terminal 2,
+> wait for its `server.listening` line, then run the `curl` in your curl
+> terminal. After F3, `Ctrl+C` terminal 2 and start plain `npm run dev` again.
+
 ### F2 — non-HTTPS target when the strict policy is in effect
 
-Stop the service and restart it **without** `ALLOW_INSECURE_TARGET_URLS`:
+Terminal 2 — `Ctrl+C`, then:
 
 ```bash
 ALLOW_INSECURE_TARGET_URLS=false npm run dev
+```
+
+Curl terminal:
+
+```bash
 curl -i -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
   -d '{"eventType":"order.created","targetUrl":"http://plain.example/h"}'
 ```
 
-**Expect:** `400`, detail mentions `https`. (Then restart with your `.env`.)
+**Expect:** `400`, detail mentions `https`.
 
 ### F3 — SSRF guard blocks internal targets
 
-Restart with the guard **on**:
+Terminal 2 — `Ctrl+C`, then:
 
 ```bash
 SSRF_GUARD_ENABLED=true ALLOW_INSECURE_TARGET_URLS=true npm run dev
 ```
+
+Curl terminal:
 
 ```bash
 curl -i -X POST localhost:3000/subscriptions -H 'content-type: application/json' -d '{"eventType":"order.created","targetUrl":"http://127.0.0.1:9000/h"}'
@@ -419,7 +432,8 @@ curl -i -X POST localhost:3000/subscriptions -H 'content-type: application/json'
 
 **Expect:** each `400`, detail `targetUrl rejected: … loopback / private /
 link-local / cloud-metadata address`. A public `https://` target still works
-(try one against your `webhook.site` URL). Then restart with your `.env`.
+(try one against your `webhook.site` URL). Then `Ctrl+C` terminal 2 and restart
+plain `npm run dev` before F4.
 
 ### F4 — invalid event bodies
 
@@ -514,10 +528,17 @@ delivery is `failed`, `attempts: 4`, `lastStatusCode: 503`, `lastError` set,
 
 ### R3 — timeout is retried
 
-Restart the service with a short timeout first, then run the scenario:
+Needs a short webhook timeout, so restart the service first.
+
+**Terminal 2** — `Ctrl+C`, then (wait for `server.listening`):
 
 ```bash
-# terminal 2:  (Ctrl+C, then)   WEBHOOK_TIMEOUT_MS=1000 npm run dev
+WEBHOOK_TIMEOUT_MS=1000 npm run dev
+```
+
+**Curl terminal:**
+
+```bash
 curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
   -d '{"eventType":"retry.timeout","targetUrl":"http://localhost:4000/slow?delay=8000"}' > /dev/null
 EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
@@ -527,7 +548,8 @@ curl -s "localhost:3000/deliveries?eventId=$EVT"
 
 **Expect:** each attempt times out after ~1 s (the inbox still logs the request —
 it received it, it just answers late); the delivery retries and finally `failed`
-with `lastError` mentioning a timeout. Restore `.env` and restart afterwards.
+with `lastError` mentioning a timeout. Then `Ctrl+C` terminal 2 and restart plain
+`npm run dev`.
 
 ### R4 — non-retryable failure is not retried
 
