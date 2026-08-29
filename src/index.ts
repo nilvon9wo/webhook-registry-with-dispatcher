@@ -35,10 +35,22 @@ function main(): void {
     log.warn('config.warning', { detail: warning });
   }
 
+  // A bind failure (port in use, permission denied) is a startup problem, not a
+  // runtime fault — report it plainly and exit rather than routing it through
+  // the uncaughtException handler with a stack trace and a drain of a server
+  // that never started.
+  app.httpServer.on('error', (error: NodeJS.ErrnoException) => {
+    const detail =
+      error.code === 'EADDRINUSE'
+        ? `port ${config.port} is already in use — stop the other process or set PORT`
+        : (error.message ?? String(error));
+    log.error('server.listen_failed', { port: config.port, detail });
+    process.exit(1);
+  });
   app.httpServer.listen(config.port, () => {
     log.info('server.listening', { port: config.port, persistence: config.persistence });
+    app.recovery.start(config.recovery.intervalMs);
   });
-  app.recovery.start(config.recovery.intervalMs);
 
   let shuttingDown = false;
   const shutdown = (reason: string, exitCode: number): void => {

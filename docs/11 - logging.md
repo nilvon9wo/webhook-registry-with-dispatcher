@@ -130,6 +130,7 @@ same way. New logging code must reuse these names.
 | `config.warning` | warn | bootstrap | a risky configuration combination |
 | `persistence.selected` | info | persistence | which store was wired |
 | `server.listening` | info | bootstrap | HTTP server bound |
+| `server.listen_failed` | error | bootstrap | HTTP server could not bind (e.g. port in use); the process exits `1` |
 | `server.stopping` | info | bootstrap | SIGINT/SIGTERM received |
 | `process.unhandled_rejection` / `process.uncaught_exception` | error | bootstrap | last-resort handlers |
 | `http.request` | info | http | every request — method, path, status, duration |
