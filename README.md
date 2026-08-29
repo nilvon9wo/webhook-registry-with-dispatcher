@@ -161,7 +161,10 @@ VS Code REST Client).
 ## How webhook delivery works
 
 **Matching** is an exact, case-sensitive comparison of the event's `type`
-against each subscription's `eventType`. No wildcards.
+against each subscription's `eventType`. No wildcards. Publishing is decoupled
+from subscribing: an event with **no** matching subscription is still accepted
+(`202`) and persisted — it is logged as a `dispatch.no_subscribers` warning, not
+rejected ([docs/9](docs/9%20-%20decisions.md) → "Decoupled publish").
 
 **Outbound request** — one HTTP `POST` per matching subscription:
 

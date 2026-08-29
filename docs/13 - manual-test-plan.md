@@ -228,8 +228,12 @@ EVT_NM=$(echo "$RESP" | jval id)
 curl -s "localhost:3000/deliveries?eventId=$EVT_NM"
 ```
 
-**Expect:** the event is accepted; **inbox unchanged**; the `/deliveries` query
-returns `{"items":[]}`; log shows `dispatch.started` with `matchedCount: 0`.
+**Expect:** the event is **accepted** (`202`) and persisted — publishing is
+decoupled from subscribing, so zero matches is not an error (see `docs/9` →
+"Decoupled publish"). The **inbox is unchanged**; the `/deliveries` query returns
+`{"items":[]}`; the service log shows `dispatch.started` with `matchedCount: 0`
+**and a yellow `dispatch.no_subscribers` warning** — the signal an operator would
+alert on to catch a mis-typed event type.
 
 ### G6 — event with no `data`
 

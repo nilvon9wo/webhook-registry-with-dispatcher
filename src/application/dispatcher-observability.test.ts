@@ -167,6 +167,40 @@ describe('dispatch logging — conventions', () => {
   });
 });
 
+describe('dispatch logging — no matching subscribers', () => {
+  it('logs a distinct dispatch.no_subscribers warning and creates no deliveries', async () => {
+    // Arrange — a dispatcher with an empty subscription repository.
+    const logger = createCapturingLogger();
+    const deliveries = new InMemoryDeliveryRepository();
+    const events = new InMemoryEventRepository();
+    await events.save(EVENT);
+    const dispatcher = new Dispatcher({
+      subscriptions: new InMemorySubscriptionRepository(),
+      events,
+      deliveries,
+      webhookClient: new FakeWebhookClient(),
+      targetUrlGuard: allowAllTargetUrlGuard,
+      scheduler: new ManualScheduler(),
+      clock: CLOCK,
+      ids: ids(),
+      logger,
+      config: { webhookTimeoutMs: 5000, retryPolicy: RETRY_2 },
+      random: () => 1,
+    });
+
+    // Act
+    await dispatcher.dispatchEvent(EVENT);
+
+    // Assert
+    expect(lineNamed(logger.lines, 'dispatch.started')?.fields).toMatchObject({ matchedCount: 0 });
+    expect(lineNamed(logger.lines, 'dispatch.no_subscribers')).toMatchObject({
+      level: 'warn',
+      fields: { eventId: 'evt_1', eventType: 'order.created', component: 'dispatcher' },
+    });
+    expect(await deliveries.list()).toEqual([]);
+  });
+});
+
 describe('dispatch logging — no sensitive data', () => {
   it('never writes the event payload or the full target URL into a log line', async () => {
     // Arrange

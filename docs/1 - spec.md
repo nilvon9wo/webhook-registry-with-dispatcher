@@ -136,6 +136,8 @@ return 202 Accepted
 
 Persisting before dispatch is important: once the API accepts an event, the event should not disappear merely because the process crashes during dispatch.
 
+Publishing is decoupled from subscribing. `POST /events` returns `202` even when **no** subscription matches the event type — the event is still validated and persisted, and a subscriber may be registered later. This matches SNS / EventBridge / Pub/Sub and hosted webhook products. Zero matches is surfaced as a `dispatch.no_subscribers` warning in the logs (so a mis-typed `type` is visible), not as an error to the caller. See `docs/9` → "Decoupled publish".
+
 ## 4. Event Delivery
 
 For every subscription whose eventType matches the event type:

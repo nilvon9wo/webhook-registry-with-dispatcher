@@ -136,6 +136,7 @@ same way. New logging code must reuse these names.
 | `http.request_error` | error | http | a handler threw a 5xx (details logged, not returned) |
 | `event.accepted` | info | event-service | `POST /events` persisted an event |
 | `dispatch.started` | info | dispatcher | matching done for an event |
+| `dispatch.no_subscribers` | warn | dispatcher | an event matched **zero** subscriptions — accepted and persisted, but delivered nowhere (often a mis-typed event type; alert on this) |
 | `dispatch.failed` | error | dispatcher | the whole async dispatch threw |
 | `dispatch.partial_failure` | error | dispatcher | ≥1 delivery record could not be saved |
 | `delivery.created` | debug | dispatcher | a delivery record was persisted |

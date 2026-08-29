@@ -103,6 +103,20 @@ It is a living document, updated as implementation proceeds.
   future addition.
 - **`POST /events` returns `202` with the stored event body** (`id`, `type`,
   `data`, `createdAt`) and no `Location` header (there is no event GET route).
+- **Decoupled publish — zero matching subscribers is not an error.** `POST
+  /events` validates, persists, and returns `202` regardless of how many
+  subscriptions match. This is how every comparable system behaves (SNS,
+  EventBridge, Pub/Sub, and hosted webhook products like Stripe / Svix): the
+  publisher is intentionally decoupled from the subscriber set, whose lifecycle
+  is independent, and a subscriber may be registered moments later. Returning a
+  `4xx` would wrongly tell the caller the event was rejected. The typo risk
+  (a mis-typed `type` silently going nowhere) is addressed with **observability,
+  not a status code**: the dispatcher emits a distinct `dispatch.no_subscribers`
+  **warning** (`docs/11`) that an operator can alert on — matching the
+  "unmatched-events metric" pattern EventBridge/SNS use. A stricter
+  registered-event-types model (reject unknown types) was considered and left
+  out: the spec's model lets subscriptions define the types implicitly, and
+  up-front type registration is a heavier design than the four-hour build wants.
 - **Dispatcher seam:** `EventService` depends on an `EventDispatcher` interface
   (`dispatch(event): void`, must return promptly and never throw into the
   caller). Persist is awaited before `dispatch` is called.

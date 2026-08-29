@@ -143,6 +143,19 @@ export class Dispatcher implements EventDispatcher {
       matchedCount: subscriptions.length,
     });
 
+    if (subscriptions.length === 0) {
+      // Publishing is decoupled from subscribing: zero matches is a valid
+      // outcome, not an error — the event is still persisted, and a subscriber
+      // may be registered later. Logged distinctly (and at `warn`) so an
+      // operator can alert on "events going nowhere", which is often a
+      // mis-typed event type. See docs/9 "Decoupled publish".
+      this.log.warn('dispatch.no_subscribers', {
+        eventId: event.id,
+        eventType: event.type,
+      });
+      return;
+    }
+
     const materialized = await Promise.allSettled(
       subscriptions.map((subscription) => this.materializeDelivery(event, subscription)),
     );
