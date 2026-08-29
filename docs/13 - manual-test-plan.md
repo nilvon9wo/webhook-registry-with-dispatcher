@@ -15,8 +15,19 @@ for hands-on confidence and for demonstrating the system.
 
 - Node.js 24 LTS (`node --version` → `v24.x`)
 - `npm install` has been run
-- Two or three terminals, plus a browser
-- Internet (only for the Swagger UI page at `/docs`; everything else is local)
+- **Two or three terminals running Git Bash** (on Windows), plus a browser. The
+  scenarios use `curl`, heredocs, and `VAR=value cmd` prefixes — Bash syntax.
+  `npm run …` works in any shell, but the `curl` scenarios do **not** run in
+  PowerShell as written. PowerShell users: either drive the API from the Swagger
+  UI / [`requests.http`](../requests.http) instead of `curl`, or call `curl.exe`
+  explicitly and set env vars on their own line (`$env:VAR='value'`) rather than
+  inline.
+- **Internet is needed only for:**
+  - the **Swagger UI page** at `/docs` — the app serves the page, but it pulls
+    the Swagger UI script/stylesheet from a CDN. The spec itself
+    (`GET /openapi.yaml`) and `requests.http` work fully offline.
+  - **webhook.site**, *if* you use it as the external subscriber (§2.5). The
+    bundled `npm run inbox` needs no internet.
 
 ## 2. Set up the test environment
 
@@ -42,7 +53,7 @@ STUCK_DELIVERING_THRESHOLD_MS=10000
 A few scenarios (SSRF) need the guard **on** — they say so and give an inline
 override.
 
-### 2.2 Terminal 1 — the webhook inbox (the "subscriber")
+### 2.2 Terminal 1 (Git Bash) — the webhook inbox (the "subscriber")
 
 ```bash
 npm run inbox
@@ -61,7 +72,7 @@ Make the subscriber misbehave by adding query params to the target URL:
 | `http://localhost:4000/orders?status=500,500,200` | `500`, `500`, then `200` (per path+query) |
 | `http://localhost:4000/orders?delay=8000` | waits 8 s, then `200` |
 
-### 2.3 Terminal 2 — the service
+### 2.3 Terminal 2 (Git Bash) — the service
 
 ```bash
 npm run dev
@@ -78,12 +89,10 @@ being allowed. That is expected for this session.
 ### 2.4 Browser — Swagger UI
 
 Open **`http://localhost:3000/docs`**. This is a live API console: expand an
-endpoint, "Try it out", edit the body, "Execute". Use it, or `curl`, or
-[`requests.http`](../requests.http) in your IDE — whichever you prefer. The
-scenarios below give `curl`.
-
-> **PowerShell:** `curl` is aliased to `Invoke-WebRequest`. Either call
-> `curl.exe` explicitly, or use `Invoke-RestMethod -Method Post -Uri … -ContentType application/json -Body '…'`.
+endpoint, "Try it out", edit the body, "Execute". Use it, or `curl` (Git Bash),
+or [`requests.http`](../requests.http) in your IDE — whichever you prefer. The
+scenarios below give `curl`. The page needs internet (it loads Swagger UI from a
+CDN); the raw spec at `http://localhost:3000/openapi.yaml` does not.
 
 ### 2.5 Alternative subscriber (guard on)
 
@@ -335,10 +344,11 @@ curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json'
   -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/flaky?status=500,500,200"}'
 ```
 
-Publish one `order.created` event, then watch:
+Publish one `order.created` event, then poll the delivery every second or so
+(re-run this a few times):
 
 ```bash
-watch -n1 "curl -s 'localhost:3000/deliveries?eventId=<id>'"   # or re-run manually
+curl -s 'localhost:3000/deliveries?eventId=<id>'
 ```
 
 **Expect:**

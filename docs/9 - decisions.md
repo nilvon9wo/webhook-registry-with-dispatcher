@@ -243,8 +243,14 @@ Run immediately before packaging, in order:
    asks for the conversation to be provided. Render the session transcript
    (`~/.claude/projects/E--projects-TypeScript-Genesys-Coding-Challenge/<session>.jsonl`)
    to Markdown: user and assistant text verbatim, tool calls collapsed to
-   one-liners. Do this **last** so it captures the whole session.
-5. Confirm `.env` is not staged; only `.env.example` is tracked.
+   one-liners. Do this **last** so it captures the whole session, then commit it.
+5. **Package only what is tracked in git.** Produce the archive with
+   `git archive --format=zip --output=../webhook-registry.zip HEAD` (or
+   `git archive … --prefix=webhook-registry/ HEAD | tar -x` into a clean dir).
+   Never hand-copy the working tree — that would pull in `.git/`, `node_modules/`,
+   `.idea/`, `.env`, `dist/`, `coverage/`, and anything else in `.gitignore`.
+   Sanity-check: `git status` clean, `git ls-files | grep -E '\.env$|node_modules'`
+   returns nothing.
 
 ## 5. Explicitly out of scope for the four-hour build
 
