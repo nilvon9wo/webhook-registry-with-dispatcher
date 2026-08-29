@@ -18,7 +18,7 @@ It is a living document, updated as implementation proceeds.
 | 8 | `.env` / `.env.example` only contained `AWS_REGION`. | `.env.example` expanded to document every operational setting. `.env` remains git-ignored. |
 | 9 | `docs/8 - setup.md` referenced `cloudformation/template.yaml`. | Corrected to `infrastructure/cloudformation.yaml`. |
 | 10 | `tsconfig.json` (`rootDir: src`) would not type-check `tests/`. | Added `tsconfig.test.json`; `npm run typecheck` checks both. Unit tests are co-located `src/**/*.test.ts` and excluded from the build. |
-| 11 | The deployed CloudFormation stack (already created on AWS) will diverge from the corrected template. | Accepted by the repository owner; the stack can be redeployed at will. The app reads table names from configuration, so it is not coupled to the stack. Template rewritten (prompt 6) and finalised (prompt 14): `ResourcePrefix` + `EnablePointInTimeRecovery` parameters, Subscriptions PK=`id` + `eventType-index`, Deliveries GSIs re-keyed on `createdAt` + `status-index`, table ARN outputs, least-privilege IAM policy documented in a header comment. Validated with `cfn-lint` **and** `aws cloudformation validate-template` (server-side). Every GSI name matches the DynamoDB repositories; default table names match the default `ResourcePrefix`. Tables keep the default `DeletionPolicy: Delete` for easy challenge teardown (production → `Retain`). |
+| 11 | The deployed CloudFormation stack (already created on AWS) will diverge from the corrected template. | Accepted by the repository owner; the stack can be redeployed at will. The app reads table names from configuration, so it is not coupled to the stack. Template rewritten (prompt 6) and finalised (prompt 14): `ResourcePrefix` + `EnablePointInTimeRecovery` parameters, Subscriptions PK=`id` + `eventType-index`, Deliveries GSIs re-keyed on `createdAt` + `status-index`, table ARN outputs, least-privilege IAM policy documented in a header comment. Validated with `cfn-lint` **and** `aws cloudformation validate-template` (server-side). Every GSI name matches the DynamoDB repositories; default table names match the default `ResourcePrefix`. Tables keep the default `DeletionPolicy: Delete` for easy challenge teardown (production → `Retain`). **2026-08-29: the stack was deleted and redeployed from the corrected template** — the originally-deployed stack still had the pre-implementation schema (Subscriptions keyed `eventType`+`id`, no GSIs), which made every `GET /subscriptions/{id}` a `500` and every dispatch fail with "table does not have the specified index: eventType-index" when the app ran against real DynamoDB. Found during manual testing (`docs/13` §8); the code and the automated DynamoDB contract tests were always correct (they build throwaway tables from the in-code schema). Live tables now: Subscriptions PK `id` + `eventType-index`; Deliveries PK `id` + `eventId-index` / `subscriptionId-index` / `status-index`; Events PK `id`. Verified end-to-end (create → publish → deliver → survives a process restart). |
 
 ## 2. Tooling decisions
 
@@ -76,6 +76,16 @@ It is a living document, updated as implementation proceeds.
 - **Default config:** webhook timeout 5000 ms; max attempts 5; backoff base
   500 ms (×2, capped at 30000 ms); recovery interval 60000 ms; stuck-`delivering`
   threshold 60000 ms; max request body 1 MiB.
+- **`PERSISTENCE` defaults to `memory`.** Persistence is a port with two
+  adapters (`memory`, `dynamodb`); the challenge *requires* external storage and
+  we implement it, but the **default** is the in-process store because a fresh
+  clone (or a reviewer, or CI) can then run `npm install && npm run dev` / `npm
+  test` with zero AWS setup. `dynamodb` is one env var away (`.env.example`
+  shows the exact toggle). Running `memory` where it matters is not silent:
+  `configWarnings` emits a startup `config.warning` when `PERSISTENCE=memory`
+  with `NODE_ENV=production`. Trade-off accepted: the in-memory store does not
+  survive a process restart (including a `tsx watch` reload), so manual testing
+  that needs durable state should switch to `dynamodb` (`docs/13` §2.1 / §8).
 - **DynamoDB in tests:** unit tests fully mock the repositories. DynamoDB-backed
   repository tests are opt-in (`RUN_DYNAMODB_TESTS=1`, with `DYNAMODB_ENDPOINT`
   pointing at DynamoDB Local); the suite creates its own uuid-prefixed tables,

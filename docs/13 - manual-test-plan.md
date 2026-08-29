@@ -37,6 +37,7 @@ Create a `.env` file in the repo root (it is git-ignored):
 
 ```dotenv
 LOG_LEVEL=debug
+LOG_FORMAT=pretty
 
 # Deliver to the local inbox, which is a loopback address:
 SSRF_GUARD_ENABLED=false
@@ -48,10 +49,32 @@ RETRY_BASE_DELAY_MS=1000
 RETRY_MAX_DELAY_MS=8000
 RECOVERY_INTERVAL_MS=5000
 STUCK_DELIVERING_THRESHOLD_MS=10000
+
+# --- Persistence: choose ONE ---
+# In-memory is simplest but is wiped on every server restart (including a
+# tsx-watch reload when a source file changes). Use it for a quick pass:
+# PERSISTENCE=memory
+#
+# DynamoDB is durable — state survives restarts, and it exercises the real
+# datastore the challenge requires. Recommended for a full run. Needs
+# `aws sso login --profile webhook-challenge` first (token lasts ~1 h), and
+# the CloudFormation stack deployed (`docs/13` §8.1 / `infrastructure/`).
+PERSISTENCE=dynamodb
+AWS_PROFILE=webhook-challenge
+AWS_REGION=eu-central-1
+DYNAMODB_SUBSCRIPTIONS_TABLE=webhook-registry-subscriptions
+DYNAMODB_EVENTS_TABLE=webhook-registry-events
+DYNAMODB_DELIVERIES_TABLE=webhook-registry-deliveries
 ```
 
 A few scenarios (SSRF) need the guard **on** — they say so and give an inline
 override.
+
+**On `PERSISTENCE=dynamodb`** you can use `npm run dev` freely — a restart (or a
+watch reload) does not lose data. On `memory`, prefer `npm run build && npm
+start` during a run so an editor save / a pulled change does not silently wipe
+your subscriptions. Either way, the `/deliveries` records you create against
+DynamoDB are real rows; §8.4 shows how to clear them.
 
 ### 2.2 Terminal 1 (Git Bash) — the webhook inbox (the "subscriber")
 
@@ -134,13 +157,14 @@ the previous response — they are not literal strings the server knows. Each
 later steps reuse it. If you prefer, read the id off the response and set it by
 hand, e.g. `SUB1=sub_093505e2-…`.
 
-**The default persistence is in-memory — it does not survive a restart.**
-`PERSISTENCE=memory` (your `.env`) keeps subscriptions, events, and deliveries in
-the process's RAM. Restarting `npm run dev` — for any reason, including picking
-up a config or code change — **wipes all of it**. Your shell still holds the old
-`$SUB1` string, but the server has forgotten that id, so the next `PUT` / `GET` /
-`DELETE` on it returns `404`. This is not a bug: it is why the §8 appendix runs
-the same scenarios against real DynamoDB.
+**If you are on `PERSISTENCE=memory`, state does not survive a restart.** The
+in-process store keeps subscriptions, events, and deliveries in RAM; restarting
+`npm run dev` — for any reason, including a `tsx watch` reload when a source file
+changes — **wipes all of it**. Your shell still holds the old `$SUB1` string, but
+the server has forgotten that id, so the next `PUT` / `GET` / `DELETE` on it
+returns `404` (not a bug — this is exactly why the challenge requires external
+storage). **On `PERSISTENCE=dynamodb` (§2.1) this is a non-issue** — restart as
+often as you like.
 
 After any restart, **re-create and re-capture** before continuing:
 
