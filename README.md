@@ -77,8 +77,11 @@ live Swagger UI at `/docs` when the server is running.
 - **Node.js 24 LTS** (`package.json` `engines` requires `>=24`).
 - **No AWS account** is needed to build, run, or test with the default in-memory
   persistence. DynamoDB persistence uses the standard AWS SDK credential chain.
-- Optional: `cfn-lint` (Python) to validate the CloudFormation template;
-  Docker + `amazon/dynamodb-local` to run the opt-in DynamoDB tests.
+- Optional: `cfn-lint` (Python) to validate the CloudFormation template.
+- The opt-in DynamoDB repository tests need a DynamoDB endpoint — **AWS
+  credentials** (how they were run for this submission) or a local
+  `amazon/dynamodb-local` via Docker (`DYNAMODB_ENDPOINT`); see
+  [Tests](#tests). Neither is required to build, run, or `npm test`.
 
 ## Install
 
@@ -284,22 +287,26 @@ npm run test:all   # unit + integration + e2e
 npm run check      # format check + lint + typecheck + all tests
 ```
 
-252 unit / 49 integration (+ 17 opt-in DynamoDB) / 6 E2E, following an explicit
-Arrange/Act/Assert standard ([docs/5](docs/5%20-%20testing.md)).
+262 unit / 51 integration (+ 17 opt-in DynamoDB) / 6 E2E, following an explicit
+Arrange/Act/Assert standard ([docs/5](docs/5%20-%20testing.md)). `npm run
+test:all` → **319 passed, 17 skipped**; with the DynamoDB tests enabled →
+**336 passed**.
 
 **DynamoDB repository tests are opt-in** (`npm test` skips them). They create
 their own uuid-prefixed tables, run the shared repository contract, and delete
-the tables afterwards.
+the tables in `afterAll` whether they pass or fail.
 
 ```bash
-# DynamoDB Local (docker run -p 8000:8000 amazon/dynamodb-local):
-RUN_DYNAMODB_TESTS=1 DYNAMODB_ENDPOINT=http://localhost:8000 \
-  AWS_REGION=eu-central-1 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
-  npm run test:integration
-
-# Real AWS (needs create/delete-table permission):
+# Against real AWS — how this submission verified them (needs create/delete-table
+# permission; PAY_PER_REQUEST throwaway tables, negligible cost):
 RUN_DYNAMODB_TESTS=1 AWS_PROFILE=<profile> npm run test:all              # bash
 $env:RUN_DYNAMODB_TESTS=1; $env:AWS_PROFILE='<profile>'; npm run test:all  # PowerShell
+
+# Against DynamoDB Local instead (standard AWS emulator, same wire protocol;
+# this path is supported by the config but was not exercised during development):
+RUN_DYNAMODB_TESTS=1 DYNAMODB_ENDPOINT=http://localhost:8000 \
+  AWS_REGION=eu-central-1 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
+  npm run test:integration     # docker run -p 8000:8000 amazon/dynamodb-local
 ```
 
 ## Architecture at a glance

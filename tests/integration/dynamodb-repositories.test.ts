@@ -1,9 +1,12 @@
 /**
  * Opt-in DynamoDB repository integration tests.
  *
- * Skipped unless `RUN_DYNAMODB_TESTS=1`. Point `DYNAMODB_ENDPOINT` at a running
- * DynamoDB Local (e.g. `docker run -p 8000:8000 amazon/dynamodb-local`):
+ * Skipped unless `RUN_DYNAMODB_TESTS=1`. Needs a DynamoDB endpoint:
  *
+ *   # real AWS (how this submission ran them):
+ *   RUN_DYNAMODB_TESTS=1 AWS_PROFILE=<profile> npm run test:integration
+ *
+ *   # or DynamoDB Local (docker run -p 8000:8000 amazon/dynamodb-local):
  *   RUN_DYNAMODB_TESTS=1 DYNAMODB_ENDPOINT=http://localhost:8000 \
  *     AWS_REGION=eu-central-1 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
  *     npm run test:integration

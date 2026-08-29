@@ -239,9 +239,10 @@ It is a living document, updated as implementation proceeds.
   (`PERSISTENCE=memory` in production, insecure target URLs, SSRF guard off,
   recovery disabled). Added `requests.http` and a README Configuration section.
 
-- **Test review (prompt 18):** the pyramid holds — ~230 unit / ~45 integration
-  (in-memory) + 17 opt-in DynamoDB contract / 8 E2E. Every `docs/5` checklist
-  item is covered. Gaps filled: the `abandonDelivery` pure transition (+
+- **Test review (prompt 18):** the pyramid holds — a large unit base, a thin
+  integration layer (in-memory), 17 opt-in DynamoDB contract tests, a handful of
+  E2E (current totals are in the README). Every `docs/5` checklist item is
+  covered. Gaps filled: the `abandonDelivery` pure transition (+
   terminal-state guards for `abandonDelivery`/`reclaimStuck`); `DELETE
   /subscriptions` prevents future deliveries **and** leaves historical delivery
   records intact (spec §3); `PUT` re-routes matching; the event id and payload
@@ -251,10 +252,10 @@ It is a living document, updated as implementation proceeds.
   delivery end-to-end. Added a `logger` build option so a test that deliberately
   triggers an error-level log can silence it.
 - **All tests pass, DynamoDB included.** `npm test` / `test:all` keep the
-  DynamoDB repository tests skipped (they need a real DynamoDB, and CI has none).
-  Verified with `RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge npm run
-  test:all` → **321 pass, 0 skipped**, throwaway tables torn down, no orphans.
-  This is part of the pre-packaging check (prompt 22).
+  DynamoDB repository tests skipped (they need a DynamoDB endpoint, and CI has
+  none): **319 pass, 17 skipped**. Verified with `RUN_DYNAMODB_TESTS=1
+  AWS_PROFILE=webhook-challenge npm run test:all` → **336 pass, 0 skipped**
+  against real AWS, throwaway tables torn down, no orphans (re-run for prompt 22).
 - **AAA standard tightened (`docs/5`):** the "Act is one statement" rule now
   spells out that value-extraction, async synchronisation (`whenIdle` /
   `waitFor`), and searching recorded output are Assert-phase; a multi-call
@@ -324,11 +325,11 @@ Run immediately before packaging, in order:
    DynamoDB tests use throwaway uuid-prefixed tables). Leave the stack deployed
    for review (PAY_PER_REQUEST — negligible idle cost) or tear it down after.
    Hosting the app itself on AWS stays out of scope (see §5).
-5. **Export this AI conversation to `docs/ai-conversation.md`** — the challenge
-   asks for the conversation to be provided. Render the session transcript
-   (`~/.claude/projects/E--projects-TypeScript-Genesys-Coding-Challenge/<session>.jsonl`)
-   to Markdown: user and assistant text verbatim, tool calls collapsed to
-   one-liners. Do this **last** so it captures the whole session, then commit it.
+5. **Export this AI conversation** — the challenge asks for it. Run
+   `npm run export:conversation` (`scripts/export-conversation.ts`): renders the
+   session transcript to `docs/ai-conversation.md` — human + assistant text
+   verbatim, tool calls as a one-line trace, thinking/tool-output omitted. Do
+   this **last** so it captures the whole session, then commit the result.
 6. **Package only what is tracked in git.** Produce the archive with
    `git archive --format=zip --output=../webhook-registry.zip HEAD` (or
    `git archive … --prefix=webhook-registry/ HEAD | tar -x` into a clean dir).

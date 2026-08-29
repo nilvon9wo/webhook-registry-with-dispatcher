@@ -12,6 +12,7 @@
     "start": "node --env-file-if-exists=.env dist/index.js",
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "inbox": "tsx scripts/webhook-inbox.ts",
+    "export:conversation": "tsx scripts/export-conversation.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "lint": "oxlint",
     "format": "prettier --write .",
