@@ -4018,3 +4018,58 @@ Please sanity check all the "docker" references... we have 39 mentions of docker
 - 🔧 `Edit` — docs/8 - setup.md
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md .env.example "docs/7 - troubleshooting.md" "docs/8 - setup.md" "docs/9 - …
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge npm run test:all 2>&1 | grep -E "Tests|Test Files" | …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A && git commit -q -m "$(cat <<'EOF' Purge misleading Docker / DynamoDB-Local references Docker…
+- 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/zv3" rm -rf "$…
+Cleaned up. From 39 mentions down to only deliberate "we do **not** use Docker" statements plus the pre-implementation deliberation record.
+
+**Authoritative docs / code — now unambiguous:**
+
+| Location | Before | After |
+|---|---|---|
+| README Requirements | listed "Docker + `amazon/dynamodb-local`" | Docker removed; explicit callout: *"This project has no Docker involvement — no `Dockerfile`, no compose file, nothing tested or run under Docker."* |
+| README Tests | `docker run -p 8000:8000 amazon/dynamodb-local` example | only the real-AWS command; `DYNAMODB_ENDPOINT` mentioned generically, *"not exercised here"* |
+| README config table, `.env.example`, `src/config.ts`, `dynamodb-client.ts`, test header | "DynamoDB Local", `docker run …` | "a local DynamoDB-compatible endpoint" |
+| `docs/14` §6 | "the Local / Docker path…" | *"There is no Docker involvement… the service runs directly on Node.js."* |
+| `docs/7`, `docs/9`, `docs/10`, `docs/11` | stray "Docker" / "DynamoDB Local" refs | generalised or removed |
+| `.gitignore` | `.docker/`, `.dynamodb/`, `.localstack/` | removed |
+
+**`docs/8`** (the pre-implementation setup doc) keeps its "should we use Docker?" deliberation — that's a historical record — but §14, §15 and the optional-tools list now carry **"Outcome: not used"** banners.
+
+**Not touched:** `docs/ai-conversation.md` (verbatim transcript — a record, not a claim), and `.gitignore`'s `.aws-sam/` / `.serverless/` / `.terraform*` entries (plausible AWS IaC, low-profile, you didn't flag them — say the word for a fuller sweep).
+
+Zip rebuilt (328 KB), extracted-and-verified (`npm ci` → 315 pass → build → `dist/index.js`), working tree clean. Still at `webhook-registry-dispatcher.zip`.
+
+## User
+
+The point is just to make sure nobody evaluating or testing this is confused about what we are supporting or claiming to support.  Mentioning "docker" is not a taboo.  (We could also consider adding support, but unless that's another quick fix (e.g. 15 minutes), I wouldn't bother with it.
+
+## Assistant
+
+The point taken — clarity, not censorship. Let me answer the "add support" question:
+
+**A Dockerfile is genuinely ~15 min to write** (multi-stage: build → `npm ci --omit=dev` runtime, copy `dist/` + `openapi.yaml`, non-root user, `CMD ["node","dist/index.js"]`, plus a `.dockerignore`). The service is a clean fit — pure-JS deps, no native modules, config via env vars.
+
+**The catch:** it's only worth adding if it's *tested*, and that needs Docker Desktop running (your daemon was down earlier). An untested Dockerfile is exactly the "claiming what we didn't verify" problem we just cleaned up. So it's ~15 min to write + ~5 min to `docker build && docker run && curl /health` — **contingent on you starting Docker Desktop.**
+
+- 🔧 `AskUserQuestion` — {"questions":[{"question":"Add a tested Dockerfile?","header":"Docker support","multiSelect":false,"options":[{"label":"Yes — I'll start Docker Desktop","descri…
+- 🔧 `Bash` — docker ps 2>&1 | head -2; echo "exit: $?"
+- 🔧 `Write` — Dockerfile
+- 🔧 `Write` — .dockerignore
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker build -t webhook-registry:test . 2>&1 | tail -25
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker images webhook-registry:test --format "size: {{.Size}}" && docker run -d --name wr-smoke -p 3010:…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "--- graceful shutdown (SIGTERM) ---" && docker stop -t 10 wr-smoke >/dev/null && docker logs wr-sm…
+- 🔧 `Read` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Edit` — package.json
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "Manual test plan\|Local subscriber\|API console:" "docs/9 - decisions.md" | head
+- 🔧 `Read` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "Docker\|no Docker\|a security review\|manual test plan\|clean startup-failure" "docs/14 - final…
+- 🔧 `Read` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md package.json "docs/8 - setup.md" "docs/9 - decisions.md" "docs/14 - final…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker build -q -t webhook-registry . 2>&1 | tail -3 && docker run -d --name wr-final -p 3011:3000 webho…
