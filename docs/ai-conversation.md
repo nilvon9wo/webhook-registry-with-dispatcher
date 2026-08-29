@@ -3684,3 +3684,127 @@ Provide a concise final report containing:
 - 🔧 `Read` — docs/9 - decisions.md
 - 🔧 `Read` — docs/9 - decisions.md
 - 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write scripts/export-conversation.ts >/dev/null 2>&1 && npm run export:conversation >/dev…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A && git status --short && echo "---" && git diff --cached --stat | tail -15
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git commit -q -m "$(cat <<'EOF' Release check: conversation export tool, accurate README, DynamoDB-Local…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git archive --format=tar HEAD | tar -tf - | grep -E "^\.env$|node_modules|\.idea|dist/|\.git/|coverage|/…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && rm -rf dist && npm run build >/dev/null 2>&1 && echo "build: OK ($(ls dist/**/*.js dist/*.js 2>/dev/null…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sed -n '1,40p' "docs/0 - SW Engineer task - WebhookRegistryTask.md"
+All 10 release-check items pass. Details, then the report.
+
+## Release check
+
+| Check | Result |
+|---|---|
+| Clean TypeScript build | ✅ `rm -rf dist && npm run build` → 32 JS files, exit 0 |
+| Complete test suite | ✅ `npm run check` → **319 passed, 17 skipped**; `RUN_DYNAMODB_TESTS=1` against real AWS → **336 passed** |
+| Lint / format | ✅ oxlint clean, `prettier --check .` clean, typecheck (src + tests) clean |
+| No secrets / credentials | ✅ no AWS keys/ARNs/account IDs/PEM in tracked files; the one `secret:` hit is a test fixture asserting payloads named "secret" aren't logged |
+| No unnecessary files | ✅ `git archive HEAD` = 127 files, no `.env` / `node_modules` / `.idea` / `dist` / `coverage` |
+| CloudFormation valid | ✅ `aws cloudformation validate-template` server-side + `cfn-lint`; live stack `CREATE_COMPLETE`, 3 tables, no test orphans |
+| Config docs accurate | ✅ `.env.example` ↔ `config.ts` ↔ README table all list the same 20 settings |
+| README accurate | ✅ fixed this pass: stale test counts, and the DynamoDB-Local/Docker claim (see evaluator notes) |
+| Scripts from clean checkout | ✅ end-to-end smoke from fresh `dist/`: health, CRUD, publish→deliver, `/openapi.yaml`, `/docs` all work |
+| Spec consistency | ✅ endpoints, status codes, delivery states, headers, retry classification all match `docs/1` |
+| Temp/debug code | ✅ no `console.*`, `debugger`, `.only`, `TODO`/`FIXME` in `src/` or `scripts/` |
+
+---
+
+# Final Report — Webhook Registry + Dispatcher
+
+## 1. Implemented requirements
+
+| # | Requirement | Where |
+|---|---|---|
+| 1 | TypeScript / Node.js | TS 7.0.2, Node 24, ESM, strict tsconfig |
+| 3a | Subscription CRUD — `POST/GET/PUT/DELETE /subscriptions` (+ `?eventType=` filter) | `src/http/handlers/subscriptions.ts` |
+| 3b | Event publish — `POST /events` | `src/http/handlers/events.ts` |
+| 4 | Dispatcher — for each matching subscription, deliver the event | `src/application/dispatcher.ts` |
+| 5 | External persistence | in-memory **and** DynamoDB adapters behind a port; `PERSISTENCE` selects |
+| — | Async delivery, not blocking the publish response (`202`) | dispatcher is fire-and-forget; event persisted before dispatch |
+| — | Bounded retries with capped exponential backoff + equal jitter; retryable vs permanent classification | `src/domain/retry-policy.ts` |
+| — | Crash recovery — periodic sweep re-drives abandoned/stuck deliveries, enforces the attempt cap | `src/application/recovery.ts` |
+| — | Input validation with structured `400`s | `src/domain/*`, hand-written (no validation lib) |
+
+## 2. Implemented bonus requirements
+
+- **DynamoDB persistence** (bonus on #5) — 3 tables, GSIs matched to access patterns; `ConsistentRead` on gets; verified against real AWS.
+- **`/deliveries`** (#6) — `GET /deliveries` (`?eventId= &subscriptionId= &status=`, AND-combined) + `GET /deliveries/{id}`; full record (status, attempts, `lastStatusCode`, `lastError`, timestamps).
+- **CloudFormation** (#7) — `infrastructure/cloudformation.yaml`, parameterised, least-privilege IAM documented, validated two ways, **actually deployed**.
+- **Production-readiness (#8):**
+  - Structured JSON logging with a stable event catalogue, correlation IDs, a field dictionary, and no payloads/URLs/secrets in logs (`docs/11`)
+  - `LOG_FORMAT` pretty/JSON/auto renderer for local dev
+  - SSRF guard (DNS-resolving, blocks loopback/RFC1918/CGNAT/link-local/metadata), enforced at registration **and** each attempt
+  - Full env-var configuration with aggregated validation and startup warnings
+  - Graceful shutdown (`SIGINT`/`SIGTERM` → stop, cancel retry timers, drain in-flight, bounded)
+  - Clean startup-failure handling (`server.listen_failed`, exit 1 — not an uncaught exception)
+  - **OpenAPI 3.0.3 spec** (`openapi.yaml`) + **Swagger UI** at `/docs`
+  - A **manual test plan** (`docs/13`) and a bundled **`npm run inbox`** webhook receiver for hands-on testing
+  - Security review (`docs/10`) and post-implementation architecture review (`docs/12`)
+
+## 3. Known limitations
+
+All documented in `docs/12` (with effort/risk) and commented at the code sites:
+
+- **No auth / tenant isolation / webhook signing** — out of scope per spec; production mitigations named in `docs/10`.
+- **Single-instance recovery** — the reentrancy guard is in-process; multiple instances would each sweep. Production: a lease or a durable queue.
+- **Crash-during-fan-out window** — delivery records are written before any HTTP call, so a crash after that is fully recoverable; a crash *during* the (millisecond) materialise pass drops not-yet-written subscribers. Production: transactional event+stubs write, or an outbox.
+- **In-process dispatch** — no durable queue; the spec accepts this for the timebox, SQS+workers is the documented evolution.
+- **Unbounded list endpoints** — `GET /subscriptions` and `GET /deliveries` return the whole set; no pagination.
+- **SSRF guard doesn't defend against DNS rebinding** — TOCTOU between the guard's lookup and `fetch`'s.
+- **No idempotency key on `POST /events`** — a client retry creates a distinct event (delivery-side IDs are still stable).
+- **Recovery-sweep failures on a persistent outage** log a full stack every interval, no backoff — noise, not a fault (noted for follow-up).
+- **At-least-once** delivery, not exactly-once — stated, not hidden.
+
+## 4. Important architectural decisions
+
+Full record in `docs/9`. Highlights:
+
+- **Hexagonal / ports-and-adapters.** `domain` (pure) ← `application` (services + port interfaces) ← `infrastructure` (adapters) ← `http` ← `container.ts` (composition root). The application layer imports no infrastructure.
+- **Everything awkward-to-test is an injected seam** — `Clock`, `Scheduler`, `IdGenerator`, jitter `random`, `Logger`, `WebhookClient`, `TargetUrlGuard`.
+- **Delivery is a state machine of pure transition functions** (`pending → delivering → delivered|failed`, plus `scheduleRetry` / `reclaimStuck` / `abandonDelivery`); persistence happens after each transition, `delivering` persisted *before* the HTTP call so a crash is recoverable.
+- **Immediate dispatch is the primary path; the recovery sweep is only a safety net.**
+- **No HTTP framework, no validation library** — Node built-in `http` + a small router + hand-written validators (dependency discipline: the only runtime deps are the two AWS SDK packages).
+- **Zero-based config** — every operational setting is an env var with a safe default; in-memory is the default so a fresh clone runs with no AWS.
+- **List responses are named after the resource** (`{ "subscriptions": [...] }`, `{ "deliveries": [...] }`), not a generic envelope.
+- **Publishing is decoupled from subscribing** — an event with no matching subscription is still `202` + persisted, logged as `dispatch.no_subscribers` (not an error).
+- **oxlint instead of ESLint** — `typescript-eslint` refuses TypeScript 7.0 (see `docs/9` §2).
+
+## 5. Test results
+
+```
+npm run check           → 319 passed, 17 skipped   (262 unit / 51 integration / 6 e2e)
+RUN_DYNAMODB_TESTS=1 …   → 336 passed, 0 skipped    (+17 DynamoDB contract tests, real AWS)
+```
+
+- Test pyramid per `docs/5`; every test follows an explicit `// Arrange / // Act (one statement) / // Assert` standard.
+- The 17 skipped are the opt-in DynamoDB repository contract tests (need a DynamoDB endpoint; CI has none). They run the same shared contract as the in-memory adapter, create uuid-prefixed throwaway tables, and delete them in `afterAll` pass or fail — verified: no orphan tables.
+- Also verified by a full **manual test pass** (`docs/13`) against real DynamoDB — every golden-path, failure, retry, and crash-recovery scenario, plus a stack-delete-and-redeploy.
+
+## 6. For the evaluator
+
+1. **Run it:** `npm install && npm test` (no AWS needed — in-memory). `npm run dev`, then open `http://localhost:3000/docs` for a live API console, or use `requests.http`. `npm run inbox` is a local webhook receiver.
+2. **`docs/ai-conversation.md`** is the full AI session (requirement #2), generated by `scripts/export-conversation.ts`. It's committed now but **must be regenerated one final time** (`npm run export:conversation`) and committed immediately before the ZIP is created — the transcript keeps growing until the session ends. **This is the only outstanding packaging step.**
+3. **Package with `git archive`**, not a hand-copy — `git archive --format=zip -o ../webhook-registry.zip HEAD`. `.env` (real config) is intentionally not tracked; only `.env.example`.
+4. **Docs numbering:** `docs/` is flat and numbered in the order written; the README groups them into a reading order. `docs/2 - plan.md` is the *original* plan — `docs/9 - decisions.md` is the as-built record and the reconciliation log.
+5. **The deployed CloudFormation stack was redeployed during testing** — the originally-deployed stack still had the pre-implementation key schema, which broke the app against real DynamoDB. Found via the manual pass, fixed by `delete-stack` + redeploy from the corrected template, verified end-to-end. (`docs/9` item 11.)
+6. **DynamoDB tests were verified against real AWS**, not DynamoDB Local. The Local/Docker path is supported by the same `DYNAMODB_ENDPOINT` config and is a standard emulator, but it was not exercised during development — the README now says so plainly rather than listing Docker as a tested requirement.
+7. **AWS SSO tokens last ~1 h.** If you point the app at DynamoDB and see `recovery.sweep.failed` / `Token is expired`, run `aws sso login --profile webhook-challenge` — the running server self-heals on its next sweep.
+
+## User
+
+Please put the final report into its own md file, and add references to both this conversation and the final report in the README.md.  Then, if unless you can think of anything else we can/should do before creating the package, zip it up (excluding what we've discussed earlier.)
+
+## Assistant
+
+- 🔧 `Write` — docs/14 - final-report.md
+- 🔧 `Read` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Read` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --check README.md openapi.yaml 'src/**/*.ts' 'scripts/**/*.ts' 'tests/**/*.ts' 2>&1 | tail …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md >/dev/null 2>&1 && npm run format:check 2>&1 | tail -3
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run test:all 2>&1 | grep -E "Tests|Test Files" | tail -3 && git add -A && git commit -q -m "$(cat <<…
+- 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/clean-checkout…
+- 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/clean-checkout…
