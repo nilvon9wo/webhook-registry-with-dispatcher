@@ -1,0 +1,21 @@
+# DynamoDB Local — a throwaway endpoint for the opt-in DynamoDB repository
+# contract tests, so they can run with no AWS account.
+#
+#   npm run test:dynamodb:local          # start it, run the tests, stop it
+#
+# or manually:
+#   docker compose -f docker-compose.dynamodb-local.yml up -d
+#   RUN_DYNAMODB_TESTS=1 DYNAMODB_ENDPOINT=http://localhost:8000 \
+#     AWS_REGION=eu-central-1 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local \
+#     npm run test:integration
+#   docker compose -f docker-compose.dynamodb-local.yml down
+#
+# The test suite creates and drops its own uuid-prefixed tables, so nothing
+# needs to be provisioned here. `-inMemory` keeps it stateless between runs.
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:2.5.2
+    command: '-jar DynamoDBLocal.jar -inMemory -disableTelemetry'
+    ports:
+      - '8000:8000'

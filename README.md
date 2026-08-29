@@ -117,8 +117,20 @@ If `docker run` reports `bind: … address already in use`, a local `npm start` 
 (`-p 3010:3000`).
 
 For DynamoDB, pass `-e PERSISTENCE=dynamodb -e AWS_REGION=…` and supply
-credentials the SDK can find (mount `~/.aws` read-only, or `-e AWS_*`). Docker is
-**optional** — the service runs fine directly on Node.js.
+credentials the SDK can find. This was verified against real AWS — a subscription
+created through the container was read straight back from DynamoDB:
+
+```bash
+# Git Bash on Windows mangles the -v path — prefix with MSYS_NO_PATHCONV=1:
+docker run --rm -p 3000:3000 \
+  -e PERSISTENCE=dynamodb -e AWS_PROFILE=<profile> -e AWS_REGION=eu-central-1 \
+  -v "$HOME/.aws:/home/node/.aws:ro" webhook-registry
+```
+
+There is also [`docker-compose.dynamodb-local.yml`](docker-compose.dynamodb-local.yml)
+— a DynamoDB Local endpoint used only by `npm run test:dynamodb:local` (see
+[Tests](#tests)). Docker is **optional**; the service runs fine directly on
+Node.js.
 
 Graceful shutdown on `SIGINT` / `SIGTERM`: stop accepting connections, cancel
 pending retry timers, wait (bounded) for in-flight deliveries, exit.
@@ -315,18 +327,21 @@ test:all` → **321 passed, 17 skipped**; with the DynamoDB tests enabled →
 
 **DynamoDB repository tests are opt-in** (`npm test` skips them). They create
 their own uuid-prefixed tables, run the shared repository contract, and delete
-the tables in `afterAll` whether they pass or fail.
+the tables in `afterAll` whether they pass or fail. Two ways to run them:
 
 ```bash
-# How this submission verified them — against real AWS (needs create/delete-table
-# permission; PAY_PER_REQUEST throwaway tables, negligible cost):
+# 1. No AWS account — against DynamoDB Local in a throwaway container
+#    (needs Docker; starts it, runs the 17 tests, tears it down):
+npm run test:dynamodb:local
+
+# 2. Against real AWS — how this submission primarily verified them
+#    (needs create/delete-table permission; PAY_PER_REQUEST throwaway tables):
 RUN_DYNAMODB_TESTS=1 AWS_PROFILE=<profile> npm run test:all              # bash
 $env:RUN_DYNAMODB_TESTS=1; $env:AWS_PROFILE='<profile>'; npm run test:all  # PowerShell
 ```
 
-The same tests also accept a `DYNAMODB_ENDPOINT` pointing at any
-DynamoDB-compatible endpoint (a local emulator, LocalStack, …) instead of real
-AWS. That path is not exercised here.
+Both were run for this submission (17 pass either way; **338** with the full
+suite). Any other `DYNAMODB_ENDPOINT` (LocalStack, …) works too.
 
 ## Architecture at a glance
 

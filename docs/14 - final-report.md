@@ -21,7 +21,8 @@ Webhook Registry + Dispatcher — submission report and release check.
 | Configuration docs accurate | ✅ `.env.example` ↔ `src/config.ts` ↔ README table list the same settings |
 | README accurate | ✅ corrected this pass (test counts; the DynamoDB-Local claim — see [§6](#6-for-the-evaluator)) |
 | Package scripts from a clean checkout | ✅ end-to-end smoke from a fresh `dist/`: health, CRUD, publish → deliver, `/openapi.yaml`, `/docs` |
-| Docker image | ✅ `docker build` → `docker run` → health / create / publish / `docker stop` (graceful `SIGTERM`, exit 0); ~350 MB, non-root |
+| Docker image | ✅ `docker build` → `docker run` → health / create / publish / `docker stop` (graceful `SIGTERM`, exit 0); ~350 MB, non-root; also verified `-e PERSISTENCE=dynamodb` against real AWS |
+| DynamoDB Local | ✅ `npm run test:dynamodb:local` → **17 pass** in a throwaway container, torn down after |
 | Spec consistency | ✅ endpoints, status codes, delivery states, headers, retry classification all match `1 - spec.md` |
 | Temp / debug code | ✅ no `console.*`, `debugger`, `.only`, `TODO` / `FIXME` in `src/` or `scripts/` |
 
@@ -54,7 +55,7 @@ Webhook Registry + Dispatcher — submission report and release check.
   - graceful shutdown (`SIGINT` / `SIGTERM` → stop accepting, cancel retry timers, bounded drain of in-flight work);
   - clean startup-failure handling (`server.listen_failed` + exit 1, not an uncaught exception);
   - **OpenAPI 3.0.3** spec (`openapi.yaml`) + **Swagger UI** at `/docs`;
-  - a verified multi-stage **`Dockerfile`** (non-root, `HEALTHCHECK`, `SIGTERM` → graceful shutdown);
+  - a verified multi-stage **`Dockerfile`** (non-root, `HEALTHCHECK`, `SIGTERM` → graceful shutdown; verified against both in-memory and real DynamoDB), plus `npm run test:dynamodb:local` (DynamoDB Local in a throwaway container — the opt-in DynamoDB tests with **no AWS account**);
   - a **manual test plan** (`13 - manual-test-plan.md`) and a bundled **`npm run inbox`** webhook receiver;
   - a **security review** (`10 - security.md`) and a **post-implementation architecture review** (`12 - architecture-review.md`).
 
@@ -104,5 +105,5 @@ RUN_DYNAMODB_TESTS=1 …   → 338 passed, 0 skipped       (+17 DynamoDB contrac
 3. **Packaging** was done with `git archive` (tracked files only). `.env` (real configuration) is intentionally not tracked — only `.env.example`.
 4. **Docs numbering:** `docs/` is flat and numbered in the order the files were written; the README groups them into a reading order. `2 - plan.md` is the *original* plan — `9 - decisions.md` is the as-built record and the reconciliation log.
 5. **The deployed CloudFormation stack was redeployed during testing.** The originally-deployed stack still carried the pre-implementation key schema, which broke the app against real DynamoDB; found via the manual pass, fixed by `delete-stack` + redeploy from the corrected template, then verified end-to-end (`9 - decisions.md` item 11).
-6. **The DynamoDB tests were verified against real AWS.** The `DYNAMODB_ENDPOINT` config allows pointing them at a local DynamoDB-compatible endpoint instead, but that path is not exercised in this project. Separately: a `Dockerfile` is included and was built and run (health / publish / graceful shutdown all verified); there is no compose file and no DynamoDB Local / LocalStack. The service also runs directly on Node.js.
+6. **DynamoDB was verified two ways** — against real AWS (`RUN_DYNAMODB_TESTS=1 AWS_PROFILE=… npm run test:all` → 338 pass; the app and the container both), and against **DynamoDB Local** (`npm run test:dynamodb:local` → the 17 contract tests in a throwaway container). Docker is used for the app image and that local test fixture; it is **optional** — the service runs directly on Node.js and 321 tests need nothing but `npm install`.
 7. **AWS SSO tokens last ~1 h.** If you point the app at DynamoDB and see `recovery.sweep.failed` / `Token is expired`, run `aws sso login --profile webhook-challenge` — the running server self-heals on its next sweep.

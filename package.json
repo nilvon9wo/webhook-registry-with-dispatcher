@@ -24,6 +24,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "test:all": "vitest run",
+    "test:dynamodb:local": "tsx scripts/test-dynamodb-local.ts",
     "test:watch": "vitest",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:all",
     "cfn:lint": "cfn-lint infrastructure/cloudformation.yaml",

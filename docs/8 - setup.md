@@ -404,9 +404,10 @@ Do not optimize DynamoDB capacity for a workload that does not exist.
 
 # 14. DynamoDB Local
 
-> **Outcome (as built):** not used. DynamoDB verification was done against real
-> AWS. The app supports a `DYNAMODB_ENDPOINT` override so a local emulator *could*
-> be pointed at, but nothing in this project runs or tests that way.
+> **Outcome (as built):** DynamoDB is *primarily* verified against real AWS.
+> `npm run test:dynamodb:local` also runs the 17 opt-in contract tests against a
+> throwaway `amazon/dynamodb-local` container (`docker-compose.dynamodb-local.yml`)
+> so they need no AWS account — see `docs/9` and the README.
 
 DynamoDB Local is **optional**.
 
@@ -897,13 +898,15 @@ Perform setup in this order:
 
 ## Optional
 
-> Of the following, only a container image was ultimately produced (a verified
-> `Dockerfile`, see `docs/9`). The rest were not used — the app runs on Node.js
-> with the AWS SDK, and DynamoDB was verified against real AWS.
+> As built: a verified `Dockerfile` (the app image) and a
+> `docker-compose.dynamodb-local.yml` used only by `npm run test:dynamodb:local`
+> (see `docs/9`). LocalStack, Postman, Railway, AWS CDK were not used; the app
+> runs on Node.js with the AWS SDK and DynamoDB is primarily verified against
+> real AWS.
 
 ```text
-○ Docker  →  a Dockerfile was added (verified); no compose file
-○ DynamoDB Local
+○ Docker  →  Dockerfile (app image) + a compose file for DynamoDB Local tests
+○ DynamoDB Local  →  used by `npm run test:dynamodb:local` (throwaway container)
 ○ LocalStack
 ○ Postman
 ○ Railway

@@ -314,9 +314,21 @@ It is a living document, updated as implementation proceeds.
     `dist/` + `openapi.yaml`, **non-root `node` user**, `HEALTHCHECK` hitting
     `/health`). `CMD ["node", "dist/index.js"]` — `node` is PID 1 so `SIGTERM`
     from `docker stop` reaches the graceful-shutdown handler directly.
-    **Verified:** `docker build` → `docker run` → health / create / publish /
-    `docker stop` → `server.stopping reason=SIGTERM`, exit 0. Image ~350 MB.
-    Docker remains optional; the service also runs directly on Node.
+    **Verified** two ways: (1) `docker build` → `docker run -e PERSISTENCE=memory`
+    → health / create / publish / `docker stop` → `server.stopping
+    reason=SIGTERM`, exit 0; (2) `docker run -e PERSISTENCE=dynamodb` with a
+    read-only `~/.aws` mount → a subscription created *through the container* was
+    read straight back from real DynamoDB via the AWS CLI (SSO credentials
+    resolved inside the container, zero error lines). Image ~350 MB.
+  - **DynamoDB Local (`docker-compose.dynamodb-local.yml` + `npm run
+    test:dynamodb:local`).** So the 17 opt-in DynamoDB contract tests can run
+    with **no AWS account**: `scripts/test-dynamodb-local.ts` starts the
+    `amazon/dynamodb-local` container (`-inMemory`), waits for the endpoint,
+    runs the DynamoDB test file with dummy credentials against it, and tears the
+    container down in a `finally`. Verified: **17 pass**. The suite creates and
+    drops its own uuid-prefixed tables, so nothing is provisioned in the
+    compose file. Docker remains optional; the service also runs directly on
+    Node, and the primary DynamoDB verification is still against real AWS.
   - **Docs folder stays flat and keeps its numbering.** Considered subdividing
     `docs/` by concern and renumbering into a more optimal reading order. Not
     done: the numbers are referenced from ~30 cross-links across the README and

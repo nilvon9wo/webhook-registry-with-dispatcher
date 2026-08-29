@@ -16,4 +16,5 @@ docs
 scripts
 requests.http
 infrastructure
+docker-compose*.yml
 *.md
