@@ -140,7 +140,13 @@ It is a living document, updated as implementation proceeds.
   judged a read endpoint worth the ~15 minutes to remove the ambiguity and let
   a publisher confirm what was stored. `GET /events/{id}` → `200` with the
   stored event, `404` if unknown. Events are immutable facts once accepted, so
-  there is deliberately **no** `PUT` / `DELETE` for them.
+  there is deliberately **no** `PUT` / `DELETE` for them, and **no `GET /events`
+  list**: events are the highest-volume entity (one per publish, forever) with
+  no cheap natural filter, and nothing needs a full enumeration — event outcomes
+  are already visible via `GET /deliveries?eventId=…`. A list done properly would
+  need pagination plus `?type=` / time-range filters (a real design task, and
+  `docs/12` S8 already flags that the existing list endpoints lack pagination).
+  `GET /events` currently returns `405` (known path, unsupported method).
 - **`POST /events` returns `202` with the stored event body** (`id`, `type`,
   `data`, `createdAt`) and no `Location` header.
 - **Decoupled publish — zero matching subscribers is not an error.** `POST

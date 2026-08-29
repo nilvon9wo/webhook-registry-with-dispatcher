@@ -3901,3 +3901,66 @@ Before I submit, let's do one last sanity check against the original brief (doc/
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run build >/dev/null 2>&1 && PORT=3990 PERSISTENCE=memory LOG_FORMAT=json node dist/index.js > /tmp/…
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A && git commit -q -m "$(cat <<'EOF' Add GET /events/{id} — read back a published event docs/0 …
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge npm run test:all 2>&1 | grep -E "Tests|Test Files" | …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run export:conversation 2>&1 | tail -1 && git add -A && git commit -q -m "$(cat <<'EOF' Regenerate d…
+- 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/zv2" rm -rf "$…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git status --short && echo "(clean if nothing above)" && echo "--- HEAD ---" && git log --oneline -5 && …
+Sanity check against `docs/0` — complete, with the one gap now closed.
+
+## Point-by-point
+
+| Brief | Status |
+|---|---|
+| **1. TypeScript** | ✅ TS 7.0.2, Node 24, ESM, strict |
+| **2. AI used → provide conversation and/or plan/spec/steering** | ✅ All of them: `docs/ai-conversation.md` + `docs/2` plan + `docs/1` spec + `docs/3` steering-rules + `docs/6` prompts |
+| **3a. CRUD API for subscriptions (event type, target URL): `/subscriptions`** | ✅ Full CRUD — POST / GET (one + list + `?eventType=`) / PUT / DELETE |
+| **3b. API to publish events: `/events`** | ✅ POST `/events` — **and now `GET /events/{id}`** to read one back (added this pass; events are immutable → no PUT/DELETE) |
+| **4. Dispatcher — deliver each event to every matching subscription** | ✅ exact-match, fan-out, per-subscriber isolation, timeout, retries, recovery |
+| **5. Persist to external storage (bonus: DynamoDB)** | ✅ DynamoDB adapter (bonus) + in-memory default; verified against real AWS |
+| **6. Bonus: `/deliveries` status tracking** | ✅ `GET /deliveries` (filters) + `GET /deliveries/{id}` |
+| **7. Bonus: CloudFormation** | ✅ validated + actually deployed |
+| **8. Bonus: production-readiness** | ✅ structured logging, SSRF guard, config validation, graceful shutdown, recovery sweep, clean startup-failure handling, OpenAPI + Swagger UI, security review, architecture review, manual test plan, dev webhook inbox |
+| **9. Fill gaps yourself** | ✅ documented in `docs/1 §16` and `docs/9`; the last one (events read-back) is now closed |
+| **ZIP archive** | ✅ `webhook-registry-dispatcher.zip` |
+
+## What changed this pass
+
+`GET /events/{id}` — the only defensible gap (`/events` is under the brief's "CRUD APIs" heading; we'd shipped publish-only). ~20 lines of code + 2 tests + OpenAPI + docs. `404` on unknown id via the existing error path.
+
+- Full suite: **321 passed, 17 skipped**; with real DynamoDB: **338 passed**, no orphan tables
+- ZIP rebuilt (331 KB), extracted fresh → `npm ci` → `npm test` (315 pass) → `npm run build` → `dist/index.js` ✅
+- Working tree clean, all committed
+
+Nothing else in the brief is unaddressed or hinted-at-but-missing. The package at `E:\projects\TypeScript\Genesys Coding Challenge\webhook-registry-dispatcher.zip` is ready to submit.
+
+## User
+
+What's the URL for swagger again?
+
+## Assistant
+
+`http://localhost:3000/docs` (with the server running).
+
+- Raw spec: `http://localhost:3000/openapi.yaml`
+- Port follows `PORT` if you've changed it.
+
+## User
+
+You don't think we should also have GET /events/ to list the events?  I guess without implementing filters, which would probably be more trouble than it is worth -- for a feature nobody is specifically asking for right now -- the results would just be insane.
+
+## Assistant
+
+You've already landed on the right answer. No `GET /events` list.
+
+The reasoning holds up:
+
+- **Nobody asked for it.** The brief's "CRUD APIs … to publish events" is Create; we added read-one to be safe. A list is a separate feature.
+- **Events are the one entity where "return everything" is genuinely reckless** — every publish appends one, forever, with no natural cheap filter. `GET /subscriptions` is bounded by registrations (small); `GET /deliveries` grows but *has* filters and is the point of the observability bonus. An unbounded events list is strictly worse than both.
+- **The observability need is already covered** — `GET /deliveries?eventId=…` tells you what happened to any event, and `GET /events/{id}` reads the event itself.
+- A list done *properly* means pagination + `?type=` / time-range filters — a real design task, not a 15-minute add, and `docs/12` S8 already flags that even the *existing* list endpoints lack pagination. Adding a third would deepen a known limitation.
+
+Right now `GET /events` returns `405` (the path is known, the method isn't) — a sensible "not that" rather than "no such thing."
+
+I'll record the decision in `docs/9` so the evaluator doesn't have to wonder, then rebuild the zip:
+
+- 🔧 `Read` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/9 - decisions.md
