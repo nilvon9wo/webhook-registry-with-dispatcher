@@ -463,3 +463,90 @@ Write it in the notes column, then bring it to the assistant with:
 the scenario, the exact request, the actual response / log lines, and what you
 expected. We will decide whether it is a defect to fix or a limitation to
 document (see `docs/12` for how the existing known limitations are recorded).
+
+---
+
+## 8. Appendix — verify against real AWS DynamoDB
+
+This proves the CloudFormation template builds from zero and that the app works
+against a real datastore, not just the in-memory default. Run it as part of the
+pre-packaging checklist (`docs/9` §4). Needs `aws` CLI + a valid SSO session
+(`aws sso login --profile webhook-challenge`).
+
+> **Cost:** the tables are `PAY_PER_REQUEST` — a handful of requests is
+> effectively free, and an idle stack costs nothing beyond point-in-time-recovery
+> storage (pennies). Still, tear it down afterwards if you do not need it for
+> review.
+
+### 8.1 Recreate the stack from scratch
+
+```bash
+aws cloudformation delete-stack --stack-name webhook-registry --profile webhook-challenge --region eu-central-1
+aws cloudformation wait stack-delete-complete --stack-name webhook-registry --profile webhook-challenge --region eu-central-1
+
+aws cloudformation deploy \
+  --stack-name webhook-registry \
+  --template-file infrastructure/cloudformation.yaml \
+  --profile webhook-challenge --region eu-central-1
+
+aws cloudformation describe-stacks --stack-name webhook-registry \
+  --profile webhook-challenge --region eu-central-1 \
+  --query 'Stacks[0].{Status:StackStatus,Outputs:Outputs}'
+```
+
+**Expect:** `CREATE_COMPLETE`; outputs list the three table names
+(`webhook-registry-subscriptions` / `-events` / `-deliveries`) and ARNs.
+
+### 8.2 Point the app at the real tables
+
+Stop the local service. Add to `.env` (or export inline):
+
+```dotenv
+PERSISTENCE=dynamodb
+AWS_REGION=eu-central-1
+AWS_PROFILE=webhook-challenge
+DYNAMODB_SUBSCRIPTIONS_TABLE=webhook-registry-subscriptions
+DYNAMODB_EVENTS_TABLE=webhook-registry-events
+DYNAMODB_DELIVERIES_TABLE=webhook-registry-deliveries
+```
+
+Keep the inbox settings from §2.1 (guard off / insecure URLs on) so you can still
+deliver to `npm run inbox`. Start the service — the `config.loaded` line should
+show `persistence: "dynamodb"`.
+
+### 8.3 Walk the core scenarios
+
+Run **G2, G3, G4, G7, G9** and **R1** and **R5** from this plan unchanged. Then
+confirm the data is really in DynamoDB, not in process memory:
+
+```bash
+aws dynamodb scan --table-name webhook-registry-subscriptions --profile webhook-challenge --region eu-central-1 --query 'Count'
+aws dynamodb scan --table-name webhook-registry-deliveries    --profile webhook-challenge --region eu-central-1 --query 'Items[].status.S'
+```
+
+For **R5** (crash recovery): after killing and restarting the service, the
+`pending` delivery is still in the Deliveries table and the recovery sweep
+re-drives it — this is the test that matters most against a real datastore.
+
+**Expect:** every scenario behaves exactly as with in-memory persistence; the
+scans show the rows; `GET /deliveries` after a restart returns records written
+before the restart.
+
+### 8.4 Tear down (optional)
+
+```bash
+aws cloudformation delete-stack --stack-name webhook-registry --profile webhook-challenge --region eu-central-1
+aws cloudformation wait stack-delete-complete --stack-name webhook-registry --profile webhook-challenge --region eu-central-1
+aws dynamodb list-tables --profile webhook-challenge --region eu-central-1   # no webhook-registry-* tables
+```
+
+Then revert `.env` to `PERSISTENCE=memory`.
+
+| Step | Pass? | Notes |
+| --- | --- | --- |
+| 8.1 stack recreated → CREATE_COMPLETE | | |
+| 8.2 app starts with `persistence: dynamodb` | | |
+| 8.3 core scenarios pass against real tables | | |
+| 8.3 scans show the written rows | | |
+| 8.3 R5 recovery works against real DynamoDB | | |
+| 8.4 teardown clean (if done) | | |

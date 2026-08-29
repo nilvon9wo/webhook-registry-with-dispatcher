@@ -239,12 +239,20 @@ Run immediately before packaging, in order:
 2. `npm run check` (format:check + lint + typecheck + test:all).
 3. Complete the manual test plan (`docs/13`); fix or document anything
    unexpected.
-4. **Export this AI conversation to `docs/ai-conversation.md`** — the challenge
+4. **CloudFormation from zero + app against real DynamoDB** (`docs/13` §8):
+   delete the `webhook-registry` stack, recreate it from the template, confirm
+   `CREATE_COMPLETE`, then run the app with `PERSISTENCE=dynamodb` against the
+   real tables and walk the golden-path + one retry + the recovery scenario.
+   This exercises the template's actual table/GSI definitions (the automated
+   DynamoDB tests use throwaway uuid-prefixed tables). Leave the stack deployed
+   for review (PAY_PER_REQUEST — negligible idle cost) or tear it down after.
+   Hosting the app itself on AWS stays out of scope (see §5).
+5. **Export this AI conversation to `docs/ai-conversation.md`** — the challenge
    asks for the conversation to be provided. Render the session transcript
    (`~/.claude/projects/E--projects-TypeScript-Genesys-Coding-Challenge/<session>.jsonl`)
    to Markdown: user and assistant text verbatim, tool calls collapsed to
    one-liners. Do this **last** so it captures the whole session, then commit it.
-5. **Package only what is tracked in git.** Produce the archive with
+6. **Package only what is tracked in git.** Produce the archive with
    `git archive --format=zip --output=../webhook-registry.zip HEAD` (or
    `git archive … --prefix=webhook-registry/ HEAD | tar -x` into a clean dir).
    Never hand-copy the working tree — that would pull in `.git/`, `node_modules/`,
