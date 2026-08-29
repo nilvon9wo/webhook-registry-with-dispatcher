@@ -462,7 +462,7 @@ Useful commands include:
 
 ```powershell
 aws cloudformation validate-template `
-  --template-body file://cloudformation/template.yaml `
+  --template-body file://infrastructure/cloudformation.yaml `
   --profile webhook-challenge
 ```
 
@@ -503,7 +503,7 @@ cfn-lint --version
 Then validate:
 
 ```powershell
-cfn-lint cloudformation/template.yaml
+cfn-lint infrastructure/cloudformation.yaml
 ```
 
 This is recommended because the challenge explicitly requests a CloudFormation artifact.

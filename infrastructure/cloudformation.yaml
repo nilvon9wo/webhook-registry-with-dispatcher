@@ -4,7 +4,6 @@ Description: >
   Infrastructure for the Webhook Registry + Dispatcher technical challenge.
 
 Resources:
-
   SubscriptionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -88,7 +87,6 @@ Resources:
           Value: WebhookRegistry
 
 Outputs:
-
   SubscriptionsTableName:
     Description: DynamoDB table containing webhook subscriptions
     Value: !Ref SubscriptionsTable

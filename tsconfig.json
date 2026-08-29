@@ -24,14 +24,9 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
 
+    "types": ["node"],
     "skipLibCheck": true
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "coverage"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage", "src/**/*.test.ts", "src/**/__tests__/**"]
 }

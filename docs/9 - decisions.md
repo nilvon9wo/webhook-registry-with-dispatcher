@@ -1,0 +1,75 @@
+# Implementation Decisions & Documentation Reconciliation
+
+This document records decisions taken during the implementation phase and any
+points where the repository state was reconciled against `docs/1`–`docs/8`.
+It is a living document, updated as implementation proceeds.
+
+## 1. Reconciliation of pre-existing repository state
+
+| # | Finding | Resolution |
+|---|---------|------------|
+| 1 | `infrastructure/cloudformation.yaml` keyed the Subscriptions table on `eventType` (HASH) + `id` (RANGE), which cannot serve "get/update/delete subscription by id" or "list subscriptions" (required access patterns in `docs/4`). | Template will be changed: Subscriptions PK = `id`, with GSI `eventType-index` for "find subscriptions by event type". List = `Scan`. **Redeploying the updated template replaces the table** (empty, no data loss, no cost). |
+| 2 | No index supported "find retryable/incomplete deliveries". | Add `status-index` GSI (PK `status`, RANGE `createdAt`) to the Deliveries table. |
+| 3 | Delivery GSIs sorted by random `id`. | GSIs use `createdAt` as the range key for chronological ordering. |
+| 4 | `.gitignore` was wrapped in a ```` ```gitignore ```` markdown fence. | Fence removed. |
+| 5 | `package.json` had no scripts; no lint/format/test config. | Added scripts + `.oxlintrc.json`, `.prettierrc.json`, `vitest.config.ts`, `tsconfig.test.json`. |
+| 6 | No HTTP framework or validation library installed. | Deliberate — using the Node built-in `node:http` and hand-written validation (dependency discipline, `docs/3`). |
+| 7 | `docs/6 - prompts.md` lists `docs/1 - spec.md` twice and omits `docs/2 - plan.md` (typo). | Noted; not corrected (cosmetic, in an authoritative doc). |
+| 8 | `.env` / `.env.example` only contained `AWS_REGION`. | `.env.example` expanded to document every operational setting. `.env` remains git-ignored. |
+| 9 | `docs/8 - setup.md` referenced `cloudformation/template.yaml`. | Corrected to `infrastructure/cloudformation.yaml`. |
+| 10 | `tsconfig.json` (`rootDir: src`) would not type-check `tests/`. | Added `tsconfig.test.json`; `npm run typecheck` checks both. Unit tests are co-located `src/**/*.test.ts` and excluded from the build. |
+| 11 | The deployed CloudFormation stack (already created on AWS) will diverge from the corrected template. | Accepted by the repository owner; the stack can be redeployed at will. The app reads table names from configuration, so it is not coupled to the stack. |
+
+## 2. Tooling decisions
+
+- **Linter: `oxlint`** instead of ESLint. `typescript-eslint` hard-refuses
+  TypeScript 7.0 (the pinned latest stable; see typescript-eslint#10940), so the
+  standard `eslint` + `typescript-eslint` stack cannot run here. `oxlint` parses
+  modern TypeScript natively, has no TypeScript-compiler peer dependency, and is
+  a single self-contained dependency. Type-level checking is enforced separately
+  by the already-strict `tsc` configuration.
+- **Test runner: Vitest 4** with three projects (`unit`, `integration`, `e2e`).
+  `npm test` runs `unit` + `integration`; `e2e` is opt-in.
+- **Formatter: Prettier 3** (config committed).
+- **`@types/node`** added (required for Node built-in typings).
+- **Test structure standard: Arrange / Act / Assert**, enforced by convention and
+  documented in `docs/5 - testing.md`. Every test marks the three phases; Act is a
+  single statement; expected-throw tests use the `captureError` helper
+  (`tests/support/capture-error.ts`) to keep Act to one statement.
+- **Entry point:** `src/index.ts` loads and validates configuration and fails
+  fast on `ConfigError`. Composition-root wiring (HTTP server, dispatcher,
+  recovery) is added in later steps.
+
+## 3. Behavioural decisions (from the pre-implementation Q&A)
+
+- **HTTP layer:** built-in `node:http` + a small router. No Express/Fastify.
+- **Validation:** hand-written validators returning structured errors.
+- **IDs:** prefixed — `sub_<uuid>`, `evt_<uuid>`, `del_<uuid>` (`crypto.randomUUID()`).
+- **Event `data`:** optional, defaults to `{}`, must be a JSON object if present.
+  `type` is a required non-empty string.
+- **`PUT /subscriptions/{id}` on an unknown id:** `404` (no upsert).
+- **Retry execution:** in-process exponential backoff with jitter for the normal
+  path; the recovery sweep is the crash safety net, never the primary mechanism.
+- **HTTPS enforcement:** `https:` targets required by default;
+  `ALLOW_INSECURE_TARGET_URLS=true` permits `http:` (needed for local E2E).
+- **SSRF guard:** on by default — rejects loopback / RFC1918 / link-local /
+  `169.254.169.254`. DNS-rebinding is out of scope and documented.
+- **Outbound webhook:** body `{ id, type, timestamp, data }` plus headers
+  `Content-Type: application/json`, `X-Webhook-Event-Id`, `X-Webhook-Delivery-Id`,
+  `X-Webhook-Attempt`.
+- **Default config:** webhook timeout 5000 ms; max attempts 5; backoff base
+  500 ms (×2, capped at 30000 ms); recovery interval 60000 ms; stuck-`delivering`
+  threshold 60000 ms; max request body 1 MiB.
+- **DynamoDB in tests:** unit tests fully mock the repositories. DynamoDB-backed
+  repository tests are opt-in (`RUN_DYNAMODB_TESTS=1`), self-arranging and
+  self-cleaning; not run by `npm test`.
+- **Idempotency:** `/events` does **not** accept client idempotency keys in v1.
+  Event IDs are stable across retries. Delivery is at-least-once.
+- **AuthN/AuthZ:** out of scope; documented as an assumption.
+
+## 4. Explicitly out of scope for the four-hour build
+
+SQS / durable queue, multi-instance coordination, full SSRF protection
+(DNS-rebinding-safe resolution), authentication, real AWS deployment,
+single-table DynamoDB design, OpenAPI generation, metrics/tracing backends,
+dead-letter queues, rate limiting, response pagination.

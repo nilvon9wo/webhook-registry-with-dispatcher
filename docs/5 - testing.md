@@ -20,6 +20,51 @@ The project should use a test pyramid rather than attempting to test everything 
 
 The majority of tests should be unit tests.
 
+## Test Structure Standard (Arrange / Act / Assert)
+
+Every test in the project — unit, integration, and E2E — is written with an
+explicit **Arrange / Act / Assert** structure marked by comments, so a reader can
+see at a glance where setup ends, what single behavior is exercised, and what is
+being verified.
+
+Rules:
+
+1. **Every test body contains `// Arrange`, `// Act`, and `// Assert` comments**,
+   in that order.
+2. **Arrange** holds all setup: inputs, fakes/stubs, and construction of the
+   system under test. If a test needs no arrangement, still write the `// Arrange`
+   comment and follow it with a short note explaining why none is required, e.g.
+   `// Arrange — none: an empty environment is itself the input under test.`
+3. **Act is exactly one statement** — the single call to the behavior under test.
+   Any manipulation of the input before that call, or of the result after it,
+   belongs in Arrange or Assert respectively, never in Act. When the behavior
+   under test is expected to throw, use the `captureError` helper
+   (`tests/support/capture-error.ts`) so the Act step remains a single statement
+   and the thrown error is inspected in Assert.
+4. **Assert** holds one or more expectations on the observable result or on
+   recorded side effects (never on private internals — see *Test Quality* below).
+5. **Sanity Check** — if an assertion must run *before* the Act (for example to
+   prove a precondition, without which the test would be meaningless), mark it
+   `// Sanity Check` and add a comment explaining why it is necessary or
+   desirable.
+
+Parameterized cases (`it.each`) follow the same structure inside the case body.
+
+Example:
+
+```ts
+it('rejects a non-integer numeric setting', () => {
+  // Arrange
+  const env = { PORT: 'abc' };
+
+  // Act
+  const error = captureError(() => loadConfig(env));
+
+  // Assert
+  expect(error).toBeInstanceOf(ConfigError);
+});
+```
+
 ## Testing Goals
 
 Tests should provide confidence in:
