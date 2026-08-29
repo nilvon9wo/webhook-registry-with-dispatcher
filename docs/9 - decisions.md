@@ -72,6 +72,16 @@ It is a living document, updated as implementation proceeds.
   GSI sort-key uniqueness.
 - **Idempotency:** `/events` does **not** accept client idempotency keys in v1.
   Event IDs are stable across retries. Delivery is at-least-once.
+- **No `GET /events/{id}` endpoint.** The spec says events need not be a CRUD
+  resource; `/deliveries` (prompt 12) is the observability surface. Events are
+  still persisted for durability/audit. A read endpoint would be a reasonable
+  future addition.
+- **`POST /events` returns `202` with the stored event body** (`id`, `type`,
+  `data`, `createdAt`) and no `Location` header (there is no event GET route).
+- **Dispatcher seam:** `EventService` depends on an `EventDispatcher` interface
+  (`dispatch(event): void`, must return promptly and never throw into the
+  caller). Persist is awaited before `dispatch` is called. A no-op
+  implementation is wired until the real dispatcher (prompt 9).
 - **AuthN/AuthZ:** out of scope; documented as an assumption.
 
 ## 4. Explicitly out of scope for the four-hour build

@@ -13,6 +13,11 @@ import type {
   SubscriptionRepository,
 } from './application/ports.js';
 import { SubscriptionService } from './application/subscription-service.js';
+import {
+  EventService,
+  noopEventDispatcher,
+  type EventDispatcher,
+} from './application/event-service.js';
 import { systemClock, type Clock } from './application/clock.js';
 import { randomIdGenerator } from './domain/ids.js';
 import {
@@ -28,6 +33,7 @@ import {
 } from './infrastructure/dynamodb/dynamodb-repositories.js';
 import { createLogger, type Logger } from './infrastructure/logger.js';
 import { registerHealthRoute } from './http/handlers/health.js';
+import { registerEventRoutes } from './http/handlers/events.js';
 import { registerSubscriptionRoutes } from './http/handlers/subscriptions.js';
 import { createHttpServer } from './http/server.js';
 import { Router } from './http/router.js';
@@ -81,6 +87,8 @@ export function buildRepositories(config: AppConfig, logger: Logger): Repositori
 
 export interface BuildApplicationOptions {
   readonly clock?: Clock;
+  /** Overrides the event dispatcher (tests inject a spy; real dispatcher wired in a later step). */
+  readonly eventDispatcher?: EventDispatcher;
 }
 
 export function buildApplication(
@@ -98,9 +106,18 @@ export function buildApplication(
     targetUrlPolicy: { allowInsecure: config.security.allowInsecureTargetUrls },
   });
 
+  const eventService = new EventService({
+    repository: repositories.events,
+    dispatcher: options.eventDispatcher ?? noopEventDispatcher,
+    clock,
+    ids: randomIdGenerator,
+    logger,
+  });
+
   const router = new Router();
   registerHealthRoute(router);
   registerSubscriptionRoutes(router, subscriptionService);
+  registerEventRoutes(router, eventService);
 
   const httpServer = createHttpServer({
     router,
