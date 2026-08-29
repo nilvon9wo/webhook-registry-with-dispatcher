@@ -1,0 +1,48 @@
+# Full local stack — the service + DynamoDB Local, tables auto-provisioned.
+#
+#   docker compose up --build        # Ctrl+C to stop
+#   docker compose down              # remove containers + network
+#
+# Then:  http://localhost:3000/health   ·   http://localhost:3000/docs
+#        http://localhost:8000          # DynamoDB Local (for `aws --endpoint-url`)
+#
+# `-inMemory` DynamoDB Local, so every `up` is a clean slate. `SSRF_GUARD` and
+# `ALLOW_INSECURE_TARGET_URLS` are relaxed so a subscription can point anywhere
+# while you poke at it. See `docker-compose.dynamodb-local.yml` for the
+# tests-only variant.
+
+x-dynamo-env: &dynamo-env
+  PERSISTENCE: dynamodb
+  DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+  AWS_REGION: eu-central-1
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:2.5.2
+    command: '-jar DynamoDBLocal.jar -inMemory -disableTelemetry'
+    ports:
+      - '8000:8000'
+
+  provision:
+    build: .
+    command: ['node', 'dist/provision.js']
+    environment:
+      <<: *dynamo-env
+      LOG_FORMAT: json
+    depends_on:
+      - dynamodb-local
+
+  app:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      <<: *dynamo-env
+      LOG_FORMAT: json
+      SSRF_GUARD_ENABLED: 'false'
+      ALLOW_INSECURE_TARGET_URLS: 'true'
+    depends_on:
+      provision:
+        condition: service_completed_successfully

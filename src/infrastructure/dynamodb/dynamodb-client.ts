@@ -21,12 +21,16 @@ export interface DynamoTableNames {
   readonly deliveries: string;
 }
 
-export function createDynamoDocumentClient(options: DynamoClientOptions): DynamoDBDocumentClient {
-  const base = new DynamoDBClient({
+/** The low-level client — needed for control-plane operations (create table). */
+export function createDynamoClient(options: DynamoClientOptions): DynamoDBClient {
+  return new DynamoDBClient({
     region: options.region,
     ...(options.endpoint ? { endpoint: options.endpoint } : {}),
   });
-  return DynamoDBDocumentClient.from(base, {
+}
+
+export function createDynamoDocumentClient(options: DynamoClientOptions): DynamoDBDocumentClient {
+  return DynamoDBDocumentClient.from(createDynamoClient(options), {
     marshallOptions: {
       // Domain objects use explicit `null` for unset fields (kept as-is);
       // this only guards against a stray `undefined` inside an event payload.

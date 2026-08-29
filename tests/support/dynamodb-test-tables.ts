@@ -1,6 +1,8 @@
 /**
  * Provisions and tears down throwaway DynamoDB tables for the opt-in repository
- * integration tests. The key/index shapes mirror `infrastructure/cloudformation.yaml`.
+ * integration tests. The key/index shapes come from the shared
+ * `tableDefinitions` (also used by `src/provision.ts` and mirrored in
+ * `infrastructure/cloudformation.yaml`).
  *
  * Table names are prefixed with a per-run uuid so a run never touches another
  * run's (or the real application's) data, and `deleteTestTables` runs in
@@ -17,6 +19,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { BatchWriteCommand, type DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import type { DynamoTableNames } from '../../src/infrastructure/dynamodb/dynamodb-client.js';
+import { tableDefinitions } from '../../src/infrastructure/dynamodb/table-schema.js';
 
 export function testTableNames(): DynamoTableNames {
   const prefix = `test-${randomUUID()}`;
@@ -31,57 +34,9 @@ export async function createTestTables(
   client: DynamoDBClient,
   names: DynamoTableNames,
 ): Promise<void> {
-  await client.send(
-    new CreateTableCommand({
-      TableName: names.subscriptions,
-      BillingMode: 'PAY_PER_REQUEST',
-      AttributeDefinitions: [
-        { AttributeName: 'id', AttributeType: 'S' },
-        { AttributeName: 'eventType', AttributeType: 'S' },
-      ],
-      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-      GlobalSecondaryIndexes: [
-        {
-          IndexName: 'eventType-index',
-          KeySchema: [
-            { AttributeName: 'eventType', KeyType: 'HASH' },
-            { AttributeName: 'id', KeyType: 'RANGE' },
-          ],
-          Projection: { ProjectionType: 'ALL' },
-        },
-      ],
-    }),
-  );
-
-  await client.send(
-    new CreateTableCommand({
-      TableName: names.events,
-      BillingMode: 'PAY_PER_REQUEST',
-      AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-    }),
-  );
-
-  await client.send(
-    new CreateTableCommand({
-      TableName: names.deliveries,
-      BillingMode: 'PAY_PER_REQUEST',
-      AttributeDefinitions: [
-        { AttributeName: 'id', AttributeType: 'S' },
-        { AttributeName: 'eventId', AttributeType: 'S' },
-        { AttributeName: 'subscriptionId', AttributeType: 'S' },
-        { AttributeName: 'status', AttributeType: 'S' },
-        { AttributeName: 'createdAt', AttributeType: 'S' },
-      ],
-      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-      GlobalSecondaryIndexes: [
-        gsi('eventId-index', 'eventId'),
-        gsi('subscriptionId-index', 'subscriptionId'),
-        gsi('status-index', 'status'),
-      ],
-    }),
-  );
-
+  for (const definition of tableDefinitions(names)) {
+    await client.send(new CreateTableCommand(definition));
+  }
   for (const tableName of Object.values(names)) {
     await waitUntilTableExists({ client, maxWaitTime: 60 }, { TableName: tableName });
   }
@@ -130,22 +85,4 @@ export async function clearTestTables(
       );
     }
   }
-}
-
-function gsi(
-  indexName: string,
-  hashAttribute: string,
-): {
-  IndexName: string;
-  KeySchema: { AttributeName: string; KeyType: 'HASH' | 'RANGE' }[];
-  Projection: { ProjectionType: 'ALL' };
-} {
-  return {
-    IndexName: indexName,
-    KeySchema: [
-      { AttributeName: hashAttribute, KeyType: 'HASH' },
-      { AttributeName: 'createdAt', KeyType: 'RANGE' },
-    ],
-    Projection: { ProjectionType: 'ALL' },
-  };
 }
