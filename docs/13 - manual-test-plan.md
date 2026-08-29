@@ -134,12 +134,30 @@ the previous response — they are not literal strings the server knows. Each
 later steps reuse it. If you prefer, read the id off the response and set it by
 hand, e.g. `SUB1=sub_093505e2-…`.
 
-**Start from a clean slate.** With the default in-memory persistence, restart
-`npm run dev` (terminal 2) to wipe all subscriptions and deliveries — there is
-no bulk-delete endpoint. If you re-run a "create subscription" step without
-deleting the old one, you will have two matching subscriptions and every event
-will be delivered twice (once per subscription — that is correct fan-out, not a
-bug). `curl -s localhost:3000/subscriptions` shows what currently exists.
+**The default persistence is in-memory — it does not survive a restart.**
+`PERSISTENCE=memory` (your `.env`) keeps subscriptions, events, and deliveries in
+the process's RAM. Restarting `npm run dev` — for any reason, including picking
+up a config or code change — **wipes all of it**. Your shell still holds the old
+`$SUB1` string, but the server has forgotten that id, so the next `PUT` / `GET` /
+`DELETE` on it returns `404`. This is not a bug: it is why the §8 appendix runs
+the same scenarios against real DynamoDB.
+
+After any restart, **re-create and re-capture** before continuing:
+
+```bash
+SUB1=$(curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
+  -d '{"eventType":"order.created","targetUrl":"http://localhost:4000/orders"}' | jval id)
+echo "SUB1=$SUB1"
+```
+
+`curl -s localhost:3000/subscriptions` shows what the server currently holds — if
+`$SUB1` is not in that list, re-capture it. And if you re-run a "create" step
+without deleting the previous subscription, you will have **two** matching
+subscriptions and every event is delivered twice (correct fan-out, not a bug).
+
+To avoid mid-run restarts: the `.env` in §2.1 already has everything except R3's
+short `WEBHOOK_TIMEOUT_MS` — and each §5 scenario creates its own subscription,
+so a restart there costs nothing.
 
 Paste this helper once (Git Bash) so the capture commands work without `jq`.
 It reads the first `"<key>":"<value>"` pair from stdin:
@@ -268,13 +286,18 @@ curl -s "localhost:3000/deliveries?eventId=$EVT2"
 ### G8 — replace a subscription (re-routes matching)
 
 ```bash
+curl -s localhost:3000/subscriptions/$SUB1        # confirm $SUB1 still exists
 curl -i -X PUT localhost:3000/subscriptions/$SUB1 \
   -H 'content-type: application/json' \
   -d '{"eventType":"order.updated","targetUrl":"http://localhost:4000/orders"}'
 ```
 
-**Expect:** `200`; `id` unchanged, `createdAt` unchanged, `eventType` now
-`order.updated`, `updatedAt` advanced.
+If the first line is `404`, `$SUB1` is stale (server restarted, or you never
+captured it) — re-create it per the Conventions block and re-run.
+
+**Expect:** the PUT is `200`; `id` unchanged, `createdAt` unchanged, `eventType`
+now `order.updated`, `updatedAt` advanced. (`PUT` on an id the server does not
+have is `404` — there is no upsert.)
 
 ```bash
 curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
@@ -289,11 +312,13 @@ curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
 ### G9 — delete a subscription
 
 ```bash
-curl -i -X DELETE localhost:3000/subscriptions/$SUB1
-curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/subscriptions/$SUB1
+curl -i -X DELETE localhost:3000/subscriptions/$SUB1    # -> 204 No Content
+curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/subscriptions/$SUB1   # -> 404
 ```
 
-**Expect:** `204`, then `404`.
+**Expect:** `204`, **then `404`** — the `404` on the second line is the success
+signal: it confirms the subscription is gone. (This step needs `$SUB1` to exist
+first; if the `DELETE` is `404`, it was already stale — see G8.)
 
 ```bash
 curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
