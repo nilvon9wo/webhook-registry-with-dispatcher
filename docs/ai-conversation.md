@@ -3964,3 +3964,57 @@ I'll record the decision in `docs/9` so the evaluator doesn't have to wonder, th
 
 - 🔧 `Read` — docs/9 - decisions.md
 - 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write "docs/9 - decisions.md" >/dev/null 2>&1 && npm run format:check 2>&1 | tail -2 && n…
+Recorded in `docs/9` (the `GET /events/{id}` bullet), zip rebuilt (328 KB), tree clean.
+
+No code changed — the endpoint surface is final:
+
+```
+POST   /subscriptions          GET /subscriptions        GET /subscriptions/{id}
+PUT    /subscriptions/{id}      DELETE /subscriptions/{id}
+POST   /events                  GET /events/{id}
+GET    /deliveries              GET /deliveries/{id}
+GET    /health   GET /docs   GET /openapi.yaml
+```
+
+Package still at `E:\projects\TypeScript\Genesys Coding Challenge\webhook-registry-dispatcher.zip` — ready to submit.
+
+## User
+
+Please sanity check all the "docker" references... we have 39 mentions of docker, but never used it for anything and never tested it for anything.  I don't want anyone to expect this project supports it in any way... it was just something initially considered as "possible" but then never deemed necessary.
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git grep -in "docker" -- ':!docs/ai-conversation.md' | sed 's/\(:.\{130\}\).*/\1…/'
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== README 79-87 ===" && sed -n '79,87p' README.md && echo && echo "=== README 300-315 ===" && sed…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== docs/8 §14-15 (lines 404-455) ===" && sed -n '404,455p' "docs/8 - setup.md" && echo && echo "=…
+- 🔧 `Edit` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "DYNAMODB_ENDPOINT.*DynamoDB Local\|for DynamoDB Local" README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Edit` — .env.example
+- 🔧 `Read` — tests/integration/dynamodb-repositories.test.ts
+- 🔧 `Edit` — tests/integration/dynamodb-repositories.test.ts
+- 🔧 `Edit` — docs/7 - troubleshooting.md
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sed -n '112,124p' .gitignore
+- 🔧 `Edit` — .gitignore
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== docs/14:104-107 ===" && sed -n '104,107p' "docs/14 - final-report.md" && echo && echo "=== doc…
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/11 - logging.md
+- 🔧 `Edit` — docs/11 - logging.md
+- 🔧 `Edit` — docs/11 - logging.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== remaining 'docker' in tracked files (excl transcript) ===" && git grep -in "docker" -- ':!docs…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sed -n '46,54p' "docs/10 - security.md" && echo "---9:88-94---" && sed -n '88,94p' "docs/9 - decisions.m…
+- 🔧 `Edit` — docs/10 - security.md
+- 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Edit` — .gitignore
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sed -n '19,24p' src/config.ts && echo "---" && sed -n '1,8p' src/infrastructure/dynamodb/dynamodb-client…
+- 🔧 `Edit` — src/config.ts
+- 🔧 `Edit` — src/infrastructure/dynamodb/dynamodb-client.ts
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sed -n '895,905p' "docs/8 - setup.md"
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md .env.example "docs/7 - troubleshooting.md" "docs/8 - setup.md" "docs/9 - …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && RUN_DYNAMODB_TESTS=1 AWS_PROFILE=webhook-challenge npm run test:all 2>&1 | grep -E "Tests|Test Files" | …
