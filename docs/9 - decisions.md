@@ -327,8 +327,20 @@ It is a living document, updated as implementation proceeds.
     runs the DynamoDB test file with dummy credentials against it, and tears the
     container down in a `finally`. Verified: **17 pass**. The suite creates and
     drops its own uuid-prefixed tables, so nothing is provisioned in the
-    compose file. Docker remains optional; the service also runs directly on
-    Node, and the primary DynamoDB verification is still against real AWS.
+    compose file.
+  - **Full local stack (`docker-compose.yml` + `npm run stack:up`).** For
+    *manually* exercising the DynamoDB path with no AWS: `dynamodb-local` → a
+    one-shot `provision` service (`node dist/provision.js`) that creates the 3
+    tables → the `app`. New: `src/infrastructure/dynamodb/table-schema.ts` (the
+    3 table shapes, now shared by the provisioner **and** the contract-test
+    helper — previously duplicated), `ensure-tables.ts` (idempotent create),
+    `src/provision.ts` (**guarded — refuses to run without `DYNAMODB_ENDPOINT`,
+    so it can never touch real AWS**). Verified end-to-end: `docker compose up`
+    → tables created → a subscription created through the containerised app,
+    confirmed directly in DynamoDB Local, and it survives an app restart.
+  - Docker stays **optional** and additive: the real-AWS path (CloudFormation +
+    SDK credential chain) is unchanged and remains the primary DynamoDB
+    verification; nothing was removed.
   - **Docs folder stays flat and keeps its numbering.** Considered subdividing
     `docs/` by concern and renumbering into a more optimal reading order. Not
     done: the numbers are referenced from ~30 cross-links across the README and

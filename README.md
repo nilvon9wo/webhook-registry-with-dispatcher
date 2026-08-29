@@ -104,33 +104,44 @@ risky setting (in-memory persistence, SSRF guard off, recovery disabled, etc.).
 
 ### Docker
 
-A multi-stage [`Dockerfile`](Dockerfile) is included and verified (build → run →
-health / publish / graceful `SIGTERM` shutdown). Runs as a non-root user, ~350 MB.
+A multi-stage [`Dockerfile`](Dockerfile) (non-root, `HEALTHCHECK`, ~350 MB) and
+two compose files are included and verified. **Docker is optional** — the
+service runs fine directly on Node.js.
+
+**Full local stack — the service + DynamoDB Local, one command:**
+
+```bash
+docker compose up --build       # or: npm run stack:up   (Ctrl+C to stop)
+docker compose down             # or: npm run stack:down  (remove containers)
+```
+
+`docker-compose.yml` starts DynamoDB Local, a one-shot `provision` step that
+creates the three tables in it, then the app (`PERSISTENCE=dynamodb`,
+`DYNAMODB_ENDPOINT` → the local DB, SSRF guard relaxed for poking around). Then:
+`http://localhost:3000/health`, `http://localhost:3000/docs`, and
+`http://localhost:8000` is the DynamoDB Local endpoint. Every `up` is a clean
+slate (`-inMemory`).
+
+**Just the service** (bring your own persistence):
 
 ```bash
 docker build -t webhook-registry .          # or: npm run docker:build
 docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry   # npm run docker:run
-```
 
-If `docker run` reports `bind: … address already in use`, a local `npm start` /
-`npm run dev` is still holding port 3000 — stop it, or map a different host port
-(`-p 3010:3000`).
-
-For DynamoDB, pass `-e PERSISTENCE=dynamodb -e AWS_REGION=…` and supply
-credentials the SDK can find. This was verified against real AWS — a subscription
-created through the container was read straight back from DynamoDB:
-
-```bash
-# Git Bash on Windows mangles the -v path — prefix with MSYS_NO_PATHCONV=1:
+# against real AWS DynamoDB (verified — a row created through the container was
+# read straight back from DynamoDB). Git Bash on Windows needs MSYS_NO_PATHCONV=1:
 docker run --rm -p 3000:3000 \
   -e PERSISTENCE=dynamodb -e AWS_PROFILE=<profile> -e AWS_REGION=eu-central-1 \
   -v "$HOME/.aws:/home/node/.aws:ro" webhook-registry
 ```
 
-There is also [`docker-compose.dynamodb-local.yml`](docker-compose.dynamodb-local.yml)
-— a DynamoDB Local endpoint used only by `npm run test:dynamodb:local` (see
-[Tests](#tests)). Docker is **optional**; the service runs fine directly on
-Node.js.
+If a `docker run` / `docker compose up` reports `bind: … address already in
+use`, a local `npm start` / `npm run dev` still holds port 3000 (or 8000) — stop
+it, or remap (`-p 3010:3000`).
+
+The third file, [`docker-compose.dynamodb-local.yml`](docker-compose.dynamodb-local.yml),
+is a DynamoDB Local endpoint used only by `npm run test:dynamodb:local`
+(see [Tests](#tests)).
 
 Graceful shutdown on `SIGINT` / `SIGTERM`: stop accepting connections, cancel
 pending retry timers, wait (bounded) for in-flight deliveries, exit.

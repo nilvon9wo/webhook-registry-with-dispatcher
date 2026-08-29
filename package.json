@@ -17,6 +17,7 @@
     "docker:run": "docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry",
     "stack:up": "docker compose up --build",
     "stack:down": "docker compose down",
+    "provision:dynamo": "tsx src/provision.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "lint": "oxlint",
     "format": "prettier --write .",

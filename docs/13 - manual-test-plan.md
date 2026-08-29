@@ -31,9 +31,10 @@ for hands-on confidence and for demonstrating the system.
 
 ## 2. Set up the test environment
 
-### 2.1 Configuration for the session
+### 2.1 Common configuration
 
-Create a `.env` file in the repo root (it is git-ignored):
+Create a `.env` file in the repo root (git-ignored). These settings are the
+same whichever persistence backend you pick in §2.1.1:
 
 ```dotenv
 LOG_LEVEL=debug
@@ -49,16 +50,51 @@ RETRY_BASE_DELAY_MS=1000
 RETRY_MAX_DELAY_MS=8000
 RECOVERY_INTERVAL_MS=5000
 STUCK_DELIVERING_THRESHOLD_MS=10000
+```
 
-# --- Persistence: choose ONE ---
-# In-memory is simplest but is wiped on every server restart (including a
-# tsx-watch reload when a source file changes). Use it for a quick pass:
-# PERSISTENCE=memory
-#
-# DynamoDB is durable — state survives restarts, and it exercises the real
-# datastore the challenge requires. Recommended for a full run. Needs
-# `aws sso login --profile webhook-challenge` first (token lasts ~1 h), and
-# the CloudFormation stack deployed (`docs/13` §8.1 / `infrastructure/`).
+A few scenarios (SSRF, F3) need the guard **on** — they say so and give an
+inline override.
+
+### 2.1.1 Choose a persistence backend
+
+**The test scenarios in §3–§5 are identical for all three.** Only the setup and
+what survives a restart differ.
+
+| | Backend | What you need | Restart behaviour |
+| --- | --- | --- | --- |
+| **A** | in-memory | nothing | wiped on every restart (F2/F3/R3/R5 restart the service, so you re-create state) |
+| **B** | DynamoDB Local (Docker) | Docker | durable while the DB container is up; `docker compose down` resets |
+| **C** | real AWS DynamoDB | an AWS account + the deployed stack | real rows; §8 covers deploy + teardown |
+
+**A — in-memory.** Add nothing (memory is the default), or `PERSISTENCE=memory`.
+Skip to §2.2.
+
+**B — DynamoDB Local via Docker (no AWS account).** Append to `.env`:
+
+```dotenv
+PERSISTENCE=dynamodb
+DYNAMODB_ENDPOINT=http://localhost:8000
+AWS_REGION=eu-central-1
+AWS_ACCESS_KEY_ID=local
+AWS_SECRET_ACCESS_KEY=local
+```
+
+Then, before starting the service (§2.3):
+
+```bash
+docker compose -f docker-compose.dynamodb-local.yml up -d   # start DynamoDB Local
+npm run build && npm run provision:dynamo                   # create the 3 tables in it
+```
+
+`docker compose -f docker-compose.dynamodb-local.yml down` when you are done.
+*(Or run the whole thing in containers with `docker compose up --build` — then
+the app is on `localhost:3000` already, you skip `npm start`, and a
+subscription's `targetUrl` must use `http://host.docker.internal:4000/...` to
+reach the host inbox.)*
+
+**C — real AWS DynamoDB.** Append to `.env`:
+
+```dotenv
 PERSISTENCE=dynamodb
 AWS_PROFILE=webhook-challenge
 AWS_REGION=eu-central-1
@@ -67,20 +103,14 @@ DYNAMODB_EVENTS_TABLE=webhook-registry-events
 DYNAMODB_DELIVERIES_TABLE=webhook-registry-deliveries
 ```
 
-A few scenarios (SSRF) need the guard **on** — they say so and give an inline
-override.
+`aws sso login --profile webhook-challenge` first (token lasts ~1 h), and the
+CloudFormation stack must be deployed (§8.1). §8.4 clears the rows afterwards.
 
-This run uses `npm start` (see §2.3). On `PERSISTENCE=dynamodb` the records you
-create are real DynamoDB rows and survive every restart; §8.4 shows how to clear
-them. On `memory`, every restart wipes everything.
-
-> **SSO token expiry (`PERSISTENCE=dynamodb`).** The token lasts ~1 h. When it
-> lapses you'll see `recovery.sweep.failed` with
-> `"Token is expired … run 'aws sso login'"` repeating every
-> `RECOVERY_INTERVAL_MS` (and your API calls returning `500`). It is **not** a
-> crash — the sweep failure is caught. Run `aws sso login --profile webhook-challenge`
-> in any terminal; the running server picks up the refreshed credentials on its
-> next sweep, no restart needed.
+> **SSO token expiry (backend C).** When the ~1 h token lapses you'll see
+> `recovery.sweep.failed` — `"Token is expired … run 'aws sso login'"` — every
+> `RECOVERY_INTERVAL_MS`, and API calls return `500`. **Not** a crash (the sweep
+> failure is caught). Run `aws sso login --profile webhook-challenge`; the
+> running server recovers on its next sweep, no restart.
 
 ### 2.2 Terminal 1 (Git Bash) — the webhook inbox (the "subscriber")
 
@@ -122,6 +152,10 @@ Make the subscriber misbehave by adding query params to the target URL:
 ```bash
 npm run build && npm start
 ```
+
+(Backends A and C, and backend B without full containers. If you chose the
+all-containers option in §2.1.1, the app is already running — `docker compose
+logs -f app` is this terminal.)
 
 **Use `npm start`, not `npm run dev`, for this run.** `npm run dev` is
 `tsx watch`, whose file-watcher supervisor does not always die on `Ctrl+C`
@@ -173,13 +207,14 @@ the previous response — they are not literal strings the server knows. Each
 later steps reuse it. If you prefer, read the id off the response and set it by
 hand, e.g. `SUB1=sub_093505e2-…`.
 
-**If you are on `PERSISTENCE=memory`, state does not survive a restart.** The
-in-process store keeps subscriptions, events, and deliveries in RAM; restarting
-the server (F2/F3/R3/R5 all do) **wipes all of it**. Your shell still holds the
-old `$SUB1` string, but the server has forgotten that id, so the next `PUT` /
-`GET` / `DELETE` on it returns `404` (not a bug — this is exactly why the
-challenge requires external storage). **On `PERSISTENCE=dynamodb` (§2.1) this is
-a non-issue** — restart as often as you like.
+**On backend A (in-memory), state does not survive a restart.** The in-process
+store keeps subscriptions, events, and deliveries in RAM; restarting the server
+(F2/F3/R3/R5 all do) **wipes all of it**. Your shell still holds the old `$SUB1`
+string, but the server has forgotten that id, so the next `PUT` / `GET` /
+`DELETE` on it returns `404` (not a bug — this is exactly why the challenge
+requires external storage). **On backend B or C (`dynamodb`) restart as often as
+you like** — the rows persist as long as the DB (local container or AWS) stays
+up.
 
 After any restart, **re-create and re-capture** before continuing:
 
