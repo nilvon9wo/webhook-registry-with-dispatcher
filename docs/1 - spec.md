@@ -37,7 +37,12 @@ An event has:
 - a unique ID;
 - an event type;
 - a timestamp;
-- a JSON payload.
+- a JSON payload (`data`) — **optional**, defaulting to `{}`. Many event types
+  legitimately carry no payload (the type is the information), consistent with
+  CloudEvents where `data` is optional. When `data` is present it must be a JSON
+  object; a non-object (`null`, array, string, number) is a `400`. A missing
+  `data` is **not** flagged to the caller or the logs — see `docs/9`
+  → "Event `data` is optional".
 
 ### Subscriber
 

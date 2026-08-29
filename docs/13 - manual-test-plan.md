@@ -242,7 +242,11 @@ curl -s -X POST localhost:3000/events \
   -H 'content-type: application/json' -d '{"type":"order.created"}'
 ```
 
-**Expect:** accepted; the delivered webhook body has `"data": {}`.
+**Expect:** accepted; the delivered webhook body has `"data": {}`. `data` is
+optional by design — payload-less events are legitimate (the type is the
+information), consistent with CloudEvents — so a missing `data` is **not** an
+error or a log warning (see `docs/9` → "Event `data` is optional"). A non-object
+`data` *is* rejected — that case is F4.
 
 ### G7 — fan-out to multiple subscribers
 

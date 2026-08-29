@@ -45,8 +45,20 @@ It is a living document, updated as implementation proceeds.
 - **HTTP layer:** built-in `node:http` + a small router. No Express/Fastify.
 - **Validation:** hand-written validators returning structured errors.
 - **IDs:** prefixed — `sub_<uuid>`, `evt_<uuid>`, `del_<uuid>` (`crypto.randomUUID()`).
-- **Event `data`:** optional, defaults to `{}`, must be a JSON object if present.
-  `type` is a required non-empty string.
+- **Event `data` is optional.** Defaults to `{}`; when present it must be a JSON
+  object (a `null`, array, string, or number `data` is a `400`). `type` is a
+  required non-empty string. Rationale: many event types legitimately carry no
+  payload — the type *is* the information (`user.logged_out`,
+  `cache.invalidated`, `nightly.rollup.done`) — and CloudEvents likewise makes
+  `data` optional. A missing `data` is a valid event, not a mistake, so it is
+  **not** rejected and **not** logged as a warning (contrast
+  `dispatch.no_subscribers`, which signals likely misconfiguration): a
+  payload-less event is routine, and a per-event log line for it would be pure
+  noise. A
+  publisher verifying its integration sees `"data": {}` in the delivered webhook
+  immediately. Distinguishing "omitted" from an explicit `{}` (e.g. echoing a
+  `dataPresent` flag) was considered and rejected as needless surface for no
+  consumer benefit.
 - **`PUT /subscriptions/{id}` on an unknown id:** `404` (no upsert).
 - **Retry execution:** in-process exponential backoff with jitter for the normal
   path; the recovery sweep is the crash safety net, never the primary mechanism.

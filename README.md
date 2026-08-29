@@ -151,7 +151,8 @@ SDK provider chain (environment, SSO, shared config, instance/task role).
   (e.g. `order.created`), ≤ 100 chars.
 - `targetUrl`: absolute `https://` URL (or `http://` when
   `ALLOW_INSECURE_TARGET_URLS=true`), no embedded credentials.
-- `data`: optional JSON object, defaults to `{}`.
+- `data`: optional JSON object, defaults to `{}` (payload-less events are valid
+  and not flagged; a non-object `data` is a `400`).
 - Errors: `{ "error": { "message": string, "details"?: string[] } }`. Internal
   faults return a generic `500` (the detail is logged, not returned).
 
