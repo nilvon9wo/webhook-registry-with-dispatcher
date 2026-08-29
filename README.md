@@ -148,6 +148,7 @@ SDK provider chain (environment, SSO, shared config, instance/task role).
 | `PUT`    | `/subscriptions/{id}` | `{ eventType, targetUrl }` | `200` / `404`           | Full replace; no upsert                              |
 | `DELETE` | `/subscriptions/{id}` | —                          | `204` / `404`           | Stops future deliveries; keeps delivery history      |
 | `POST`   | `/events`             | `{ type, data? }`          | `202`                   | Persists, then dispatches asynchronously             |
+| `GET`    | `/events/{id}`        | —                          | `200` / `404`           | Read back a published event (events are immutable)   |
 | `GET`    | `/deliveries`         | —                          | `200 { deliveries }`    | Optional `?eventId= &subscriptionId= &status=` (AND) |
 | `GET`    | `/deliveries/{id}`    | —                          | `200` / `404`           |                                                      |
 | `GET`    | `/health`             | —                          | `200`                   | Liveness only; does not probe the datastore          |
@@ -289,10 +290,10 @@ npm run test:all   # unit + integration + e2e
 npm run check      # format check + lint + typecheck + all tests
 ```
 
-262 unit / 51 integration (+ 17 opt-in DynamoDB) / 6 E2E, following an explicit
+262 unit / 53 integration (+ 17 opt-in DynamoDB) / 6 E2E, following an explicit
 Arrange/Act/Assert standard ([docs/5](docs/5%20-%20testing.md)). `npm run
-test:all` → **319 passed, 17 skipped**; with the DynamoDB tests enabled →
-**336 passed**.
+test:all` → **321 passed, 17 skipped**; with the DynamoDB tests enabled →
+**338 passed**.
 
 **DynamoDB repository tests are opt-in** (`npm test` skips them). They create
 their own uuid-prefixed tables, run the shared repository contract, and delete

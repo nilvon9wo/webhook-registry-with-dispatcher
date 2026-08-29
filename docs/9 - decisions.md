@@ -134,12 +134,15 @@ It is a living document, updated as implementation proceeds.
   but delivery failed. The one gap: if a delivery *record* could not be persisted
   (`dispatch.partial_failure`, the S1-residual window), that subscriber shows
   neither — cross-check `dispatch.started`'s `matchedCount` in the logs.
-- **No `GET /events/{id}` endpoint.** The spec says events need not be a CRUD
-  resource; `/deliveries` (prompt 12) is the observability surface. Events are
-  still persisted for durability/audit. A read endpoint would be a reasonable
-  future addition.
+- **`GET /events/{id}` — read-back only, no update/delete.** The initial build
+  had `POST /events` only (`docs/1` §3 says events "need not be a CRUD API").
+  A final review against `docs/0` — which lists `/events` under "CRUD APIs" —
+  judged a read endpoint worth the ~15 minutes to remove the ambiguity and let
+  a publisher confirm what was stored. `GET /events/{id}` → `200` with the
+  stored event, `404` if unknown. Events are immutable facts once accepted, so
+  there is deliberately **no** `PUT` / `DELETE` for them.
 - **`POST /events` returns `202` with the stored event body** (`id`, `type`,
-  `data`, `createdAt`) and no `Location` header (there is no event GET route).
+  `data`, `createdAt`) and no `Location` header.
 - **Decoupled publish — zero matching subscribers is not an error.** `POST
   /events` validates, persists, and returns `202` regardless of how many
   subscriptions match. This is how every comparable system behaves (SNS,
@@ -253,8 +256,8 @@ It is a living document, updated as implementation proceeds.
   triggers an error-level log can silence it.
 - **All tests pass, DynamoDB included.** `npm test` / `test:all` keep the
   DynamoDB repository tests skipped (they need a DynamoDB endpoint, and CI has
-  none): **319 pass, 17 skipped**. Verified with `RUN_DYNAMODB_TESTS=1
-  AWS_PROFILE=webhook-challenge npm run test:all` → **336 pass, 0 skipped**
+  none): **321 pass, 17 skipped**. Verified with `RUN_DYNAMODB_TESTS=1
+  AWS_PROFILE=webhook-challenge npm run test:all` → **338 pass, 0 skipped**
   against real AWS, throwaway tables torn down, no orphans (re-run for prompt 22).
 - **AAA standard tightened (`docs/5`):** the "Act is one statement" rule now
   spells out that value-extraction, async synchronisation (`whenIdle` /

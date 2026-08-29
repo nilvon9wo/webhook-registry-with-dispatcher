@@ -48,6 +48,9 @@ Content-Type: application/json
   "data": { "orderId": "12345" }
 }
 
+### Get the published event
+GET {{baseUrl}}/events/{{publishEvent.response.body.id}}
+
 ### List all deliveries
 GET {{baseUrl}}/deliveries
 

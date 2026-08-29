@@ -190,6 +190,25 @@ paths:
         '400': { $ref: '#/components/responses/ValidationError' }
         '413': { $ref: '#/components/responses/BodyTooLarge' }
 
+  /events/{id}:
+    get:
+      tags: [events]
+      summary: Get a published event
+      description: Events are immutable once accepted — there is no update or delete.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+          example: evt_1a2b3c
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /deliveries:
     get:
       tags: [deliveries]

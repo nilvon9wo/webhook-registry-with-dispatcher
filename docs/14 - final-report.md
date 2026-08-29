@@ -13,7 +13,7 @@ Webhook Registry + Dispatcher — submission report and release check.
 | Check | Result |
 | --- | --- |
 | Clean TypeScript build | ✅ `rm -rf dist && npm run build` → exit 0 |
-| Complete test suite | ✅ `npm run check` → **319 passed, 17 skipped**; with real DynamoDB → **336 passed** |
+| Complete test suite | ✅ `npm run check` → **321 passed, 17 skipped**; with real DynamoDB → **338 passed** |
 | Lint / format | ✅ oxlint clean · `prettier --check .` clean · typecheck (src + tests) clean |
 | No secrets / credentials | ✅ no keys / ARNs / account IDs / PEM in tracked files (one `secret:` hit is a test fixture asserting such fields are **not** logged) |
 | No unnecessary files | ✅ `git archive HEAD` = 127 files, no `.env` / `node_modules` / `.idea` / `dist` / `coverage` |
@@ -32,7 +32,7 @@ Webhook Registry + Dispatcher — submission report and release check.
 | --- | --- | --- |
 | 1 | TypeScript / Node.js | TS 7.0.2, Node 24, ESM, strict `tsconfig` |
 | 3a | Subscription CRUD — `POST` / `GET` / `PUT` / `DELETE /subscriptions` (+ `?eventType=`) | `src/http/handlers/subscriptions.ts` |
-| 3b | Event publish — `POST /events` | `src/http/handlers/events.ts` |
+| 3b | Event publish + read-back — `POST /events`, `GET /events/{id}` (immutable, no update/delete) | `src/http/handlers/events.ts` |
 | 4 | Dispatcher — deliver each event to every matching subscription | `src/application/dispatcher.ts` |
 | 5 | External persistence | in-memory **and** DynamoDB adapters behind a port; `PERSISTENCE` selects |
 | — | Asynchronous delivery — the publish call does not wait for subscribers (`202`) | event persisted, then fire-and-forget dispatch |
@@ -87,8 +87,8 @@ Full record in `9 - decisions.md`. Highlights:
 ## 5. Test results
 
 ```
-npm run check           → 319 passed, 17 skipped      (262 unit / 51 integration / 6 e2e)
-RUN_DYNAMODB_TESTS=1 …   → 336 passed, 0 skipped       (+17 DynamoDB contract tests, real AWS)
+npm run check           → 321 passed, 17 skipped      (262 unit / 53 integration / 6 e2e)
+RUN_DYNAMODB_TESTS=1 …   → 338 passed, 0 skipped       (+17 DynamoDB contract tests, real AWS)
 ```
 
 - Test pyramid per `5 - testing.md`; every test follows an explicit `// Arrange` / `// Act` (one statement) / `// Assert` structure.

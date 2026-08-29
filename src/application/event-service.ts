@@ -12,6 +12,7 @@
 
 import { createEvent, parseEventInput, type WebhookEvent } from '../domain/event.js';
 import type { IdGenerator } from '../domain/ids.js';
+import { ResourceNotFoundError } from './errors.js';
 import { eventFields } from './log-fields.js';
 import { LOG_COMPONENTS, type Logger } from './logging.js';
 import type { Clock } from './clock.js';
@@ -66,5 +67,18 @@ export class EventService {
 
     this.dispatcher.dispatch(event);
     return event;
+  }
+
+  /**
+   * Reads back a persisted event by id (`GET /events/{id}`). Events are
+   * immutable once accepted — there is no update or delete. Throws
+   * {@link ResourceNotFoundError} if the id is unknown.
+   */
+  async getById(id: string): Promise<WebhookEvent> {
+    const found = await this.repository.get(id);
+    if (found === undefined) {
+      throw new ResourceNotFoundError('event', id);
+    }
+    return found;
   }
 }

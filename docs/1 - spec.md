@@ -234,7 +234,7 @@ Events
 Deliveries
 ```
 
-Events should be persisted even though they are not necessarily exposed as a conventional CRUD resource.
+Events should be persisted even though they are not necessarily exposed as a conventional CRUD resource. (As built: `POST /events` to publish and `GET /events/{id}` to read back — events are immutable, so no update or delete. See `docs/9` → "GET /events/{id}".)
 
 Persisting events provides:
 

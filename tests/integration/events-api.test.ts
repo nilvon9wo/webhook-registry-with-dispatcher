@@ -110,3 +110,30 @@ describe('POST /events', () => {
     expect(dispatcher.dispatched).toHaveLength(0);
   });
 });
+
+describe('GET /events/{id}', () => {
+  it('returns a previously published event', async () => {
+    // Arrange
+    const published = await app.request<WebhookEvent>('POST', '/events', {
+      type: 'order.created',
+      data: { orderId: '12345' },
+    });
+
+    // Act
+    const response = await app.request<WebhookEvent>('GET', `/events/${published.body.id}`);
+
+    // Assert
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(published.body);
+  });
+
+  it('returns 404 for an unknown id', async () => {
+    // Arrange — nothing published.
+
+    // Act
+    const response = await app.request('GET', '/events/evt_does_not_exist');
+
+    // Assert
+    expect(response.status).toBe(404);
+  });
+});
