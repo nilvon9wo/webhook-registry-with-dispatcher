@@ -113,10 +113,27 @@ It is a living document, updated as implementation proceeds.
   (a mis-typed `type` silently going nowhere) is addressed with **observability,
   not a status code**: the dispatcher emits a distinct `dispatch.no_subscribers`
   **warning** (`docs/11`) that an operator can alert on — matching the
-  "unmatched-events metric" pattern EventBridge/SNS use. A stricter
-  registered-event-types model (reject unknown types) was considered and left
-  out: the spec's model lets subscriptions define the types implicitly, and
-  up-front type registration is a heavier design than the four-hour build wants.
+  "unmatched-events metric" pattern EventBridge/SNS use.
+
+  Alternatives considered and rejected:
+  - **A stricter registered-event-types model** (reject unknown types): the
+    spec's model lets subscriptions define the types implicitly, and up-front
+    type registration is a heavier design than the four-hour build wants.
+  - **A distinct 2xx status for zero matches** (e.g. `200` instead of `202`):
+    overloads the status code with a business outcome. Proxies, gateways,
+    uptime monitors and generated clients treat every 2xx alike, so it needs
+    custom client branching anyway — no cheaper than a metric — and it is
+    invisible to standard tooling. No comparable system does this.
+  - **A `matchedSubscriptions` count in the `202` body** (EventBridge-style):
+    would move the subscription-match query onto the synchronous request path
+    (an extra datastore round-trip per publish) purely for telemetry, and the
+    value is still a racy point-in-time count — "no subscribers *now*" is not
+    "this event was wasted". Publishers that genuinely need it can already poll
+    `GET /deliveries?eventId=…` or check `GET /subscriptions?eventType=…`.
+
+  Conclusion: "no subscribers" is an operator/platform concern (is routing
+  configured correctly?), not a publisher concern, so it lives in logs/metrics,
+  and `POST /events` stays a uniform `202`.
 - **Dispatcher seam:** `EventService` depends on an `EventDispatcher` interface
   (`dispatch(event): void`, must return promptly and never throw into the
   caller). Persist is awaited before `dispatch` is called.
