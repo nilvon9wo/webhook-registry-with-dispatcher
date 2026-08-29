@@ -4073,3 +4073,62 @@ The point taken — clarity, not censorship. Let me answer the "add support" que
 - 🔧 `Edit` — docs/14 - final-report.md
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md package.json "docs/8 - setup.md" "docs/9 - decisions.md" "docs/14 - final…
 - 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker build -q -t webhook-registry . 2>&1 | tail -3 && docker run -d --name wr-final -p 3011:3000 webho…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && git add -A && git commit -q -m "$(cat <<'EOF' Add a verified multi-stage Dockerfile Docker was deliberat…
+- 🔧 `Bash` — SCRATCH="/c/Users/brian/AppData/Local/Temp/claude/E--projects-TypeScript-Genesys-Coding-Challenge/b533afc0-eb29-4be9-abb3-7a0e67cf61d3/scratchpad/zv4" rm -rf "$…
+- 🔧 `Bash` — docker ps -a --format '{{.Names}} {{.Image}}' | grep -iE "wr-|webhook" && echo STRAYS || echo "no stray containers"; docker images --format '{{.Repository}}:{{.…
+Docker support added and verified — it's now a real capability, not a claim.
+
+## `Dockerfile` (multi-stage)
+
+| Stage | |
+|---|---|
+| build | `node:24-slim` → `npm ci` → `tsc` |
+| runtime | `npm ci --omit=dev`, `dist/` + `openapi.yaml`, **non-root `node` user**, `HEALTHCHECK` → `/health` |
+
+- `CMD ["node", "dist/index.js"]` — node is PID 1, so `docker stop`'s `SIGTERM` reaches the graceful-shutdown handler (verified: `server.stopping reason=SIGTERM`, exit 0)
+- ~350 MB image
+- `.dockerignore` keeps the build context lean
+- `npm run docker:build` / `npm run docker:run`
+
+```bash
+docker build -t webhook-registry .
+docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry
+```
+
+## Verified
+
+`docker build` → `docker run` → health / create subscription (`201`) / publish event / `/docs` (`200`) / `docker stop` → clean shutdown. Re-verified from a fresh extraction of the ZIP. No stray images or containers left behind.
+
+## Docs updated
+
+- README: new **Docker** section (the old "no Docker involvement" note is gone — replaced with "here's the verified Dockerfile, and it's optional")
+- `docs/9`: decision entry with the verification result
+- `docs/8` §15 + optional-tools list: "not used" → "Dockerfile added, verified; no compose file"
+- `docs/14`: bonus list, release-check table, evaluator note #6
+
+ZIP rebuilt (**332 KB**), both the Node and Docker paths verified from extraction, working tree clean. `webhook-registry-dispatcher.zip` is ready.
+
+## User
+
+When I try to run docker, I get: """$ npm run docker:run   
+
+> webhook-registry-dispatcher@1.0.0 docker:run
+> docker run --rm -p 3000:3000 -e PERSISTENCE=memory webhook-registry
+
+What's next:
+    Debug this container error with Gordon → docker ai "help me fix this container error"
+docker: Error response from daemon: ports are not available: exposing port TCP 0.0.0.0:3000 -> 127.0.0.1:0: listen tcp 0.0.0.0:3000: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+
+Run 'docker run --help' for more information
+"""
+
+## Assistant
+
+- 🔧 `Bash` — netstat -ano | grep ':3000' | grep LISTENING; echo "---"; for pid in $(netstat -ano | grep ':3000' | grep LISTENING | awk '{print $5}' | sort -u); do powershell…
+That's not a Docker problem — **your `npm start` server from the manual testing is still running on host port 3000** (PID 3568, `node dist/index.js`). Docker can't bind a port that's already taken.
+
+Freeing it:
+
+- 🔧 `Bash` — powershell -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=3568').CommandLine" && taskkill //F //PID 3568 && sleep 1 && (netstat -ano | grep ':3000 …
+- 🔧 `Read` — README.md
+- 🔧 `Edit` — README.md
