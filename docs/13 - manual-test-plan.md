@@ -494,21 +494,35 @@ error (with stack) goes to the log only.
 
 ## 5. Retry & recovery
 
-Use the local inbox with your `.env` (`MAX_DELIVERY_ATTEMPTS=4`,
-`RETRY_BASE_DELAY_MS=1000`). Each scenario uses its **own event type** so it does
-not matter what subscriptions §3 left behind. The `jval` helper from §3 is used
-again. To watch a delivery, re-run its `/deliveries?eventId=…` line every second
-or so.
+**Server config for this section:** plain `npm start` — i.e. your §2.1 `.env`
+with `SSRF_GUARD_ENABLED=false` and `ALLOW_INSECURE_TARGET_URLS=true`. If you
+just finished F3, you restarted the server with the guard **on**; restart plain
+`npm start` now, or every subscription below fails `400`
+(`targetUrl rejected: … loopback`) because the inbox is on `localhost`. Check the
+startup `config.loaded` line: it must show `"ssrfGuardEnabled":false`.
+
+These also depend on `MAX_DELIVERY_ATTEMPTS=4` / `RETRY_BASE_DELAY_MS=1000` from
+the `.env`. Each scenario uses its **own event type**, so prior subscriptions do
+not matter. Add this helper (like `jval` in §3) so a rejected subscription is
+visible instead of hidden:
+
+```bash
+mksub() { curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' -d "$1"; echo; }
+```
+
+To watch a delivery, re-run its `/deliveries?eventId=…` line every second or so.
 
 ### R1 — retry, then eventual success
 
 ```bash
-curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"retry.ok","targetUrl":"http://localhost:4000/flaky?status=500,500,200"}' > /dev/null
+mksub '{"eventType":"retry.ok","targetUrl":"http://localhost:4000/flaky?status=500,500,200"}'
 EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
   -d '{"type":"retry.ok"}' | jval id); echo "EVT=$EVT"
 curl -s "localhost:3000/deliveries?eventId=$EVT"
 ```
+
+The first line must print a subscription object (`{"id":"sub_…",…}`). If it
+prints `{"error":…}`, fix that before publishing — see the config note above.
 
 **Expect:**
 
@@ -523,8 +537,7 @@ curl -s "localhost:3000/deliveries?eventId=$EVT"
 ### R2 — retry budget exhausted → failed
 
 ```bash
-curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"retry.exhaust","targetUrl":"http://localhost:4000/broken?status=503"}' > /dev/null
+mksub '{"eventType":"retry.exhaust","targetUrl":"http://localhost:4000/broken?status=503"}'
 EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
   -d '{"type":"retry.exhaust"}' | jval id); echo "EVT=$EVT"
 curl -s "localhost:3000/deliveries?eventId=$EVT"
@@ -548,8 +561,7 @@ WEBHOOK_TIMEOUT_MS=1000 npm start
 **Curl terminal:**
 
 ```bash
-curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"retry.timeout","targetUrl":"http://localhost:4000/slow?delay=8000"}' > /dev/null
+mksub '{"eventType":"retry.timeout","targetUrl":"http://localhost:4000/slow?delay=8000"}'
 EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
   -d '{"type":"retry.timeout"}' | jval id); echo "EVT=$EVT"
 curl -s "localhost:3000/deliveries?eventId=$EVT"
@@ -563,8 +575,7 @@ with `lastError` mentioning a timeout. Then `Ctrl+C` terminal 2 and restart plai
 ### R4 — non-retryable failure is not retried
 
 ```bash
-curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"retry.permanent","targetUrl":"http://localhost:4000/gone?status=404"}' > /dev/null
+mksub '{"eventType":"retry.permanent","targetUrl":"http://localhost:4000/gone?status=404"}'
 EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
   -d '{"type":"retry.permanent"}' | jval id); echo "EVT=$EVT"
 curl -s "localhost:3000/deliveries?eventId=$EVT"
@@ -577,8 +588,7 @@ immediately, `lastStatusCode: 404`, log `delivery.failed` with
 ### R5 — crash recovery
 
 ```bash
-curl -s -X POST localhost:3000/subscriptions -H 'content-type: application/json' \
-  -d '{"eventType":"crash.test","targetUrl":"http://localhost:4000/crash?status=503"}' > /dev/null
+mksub '{"eventType":"crash.test","targetUrl":"http://localhost:4000/crash?status=503"}'
 EVT=$(curl -s -X POST localhost:3000/events -H 'content-type: application/json' \
   -d '{"type":"crash.test"}' | jval id); echo "EVT=$EVT"
 curl -s "localhost:3000/deliveries?eventId=$EVT"    # status: pending, nextAttemptAt set
