@@ -4132,3 +4132,110 @@ Freeing it:
 - 🔧 `Bash` — powershell -Command "(Get-CimInstance Win32_Process -Filter 'ProcessId=3568').CommandLine" && taskkill //F //PID 3568 && sleep 1 && (netstat -ano | grep ':3000 …
 - 🔧 `Read` — README.md
 - 🔧 `Edit` — README.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md >/dev/null 2>&1 && npm run format:check 2>&1 | tail -2 && git add -A && g…
+That error is a **host port collision, not a Docker or image problem**. Your `npm start` server from the manual testing (PID 3568, `node dist/index.js`) was still running and holding port 3000, so the Docker daemon couldn't bind it.
+
+I killed that process — **port 3000 is free now**. Retry:
+
+```bash
+npm run docker:run
+```
+
+(or map a different host port: `docker run --rm -p 3010:3000 -e PERSISTENCE=memory webhook-registry` → hit `localhost:3010`).
+
+The image itself is fine — I verified it builds and runs (health / create / publish / graceful `SIGTERM` shutdown) both from the repo and from a fresh extraction of the ZIP. Added a README note under **Docker** about this exact `bind: address already in use` case so a reviewer isn't caught by it.
+
+ZIP rebuilt (332 KB), tree clean.
+
+## User
+
+Wait a minute, why are you setting persistence to memory?   Isn't the point of docker as a container for dynamodb?
+
+## Assistant
+
+The Dockerfile containerises the **application service** — that's the deployment artifact (what you'd ship to ECS / Fargate / Kubernetes). It is *not* a database container.
+
+You may be thinking of the other use of Docker for this kind of project: running `amazon/dynamodb-local` in a container as a test fixture. That's the thing we **deliberately didn't do** — we verified against real AWS DynamoDB instead, and just spent effort removing the misleading "DynamoDB Local via Docker" references.
+
+So the containerised app still needs to be *told* where to persist:
+
+| `docker run` env | Persistence |
+|---|---|
+| `-e PERSISTENCE=memory` | in-process — nothing external, wiped on container stop |
+| `-e PERSISTENCE=dynamodb -e AWS_REGION=… ` + credentials | **real AWS DynamoDB** (or any `DYNAMODB_ENDPOINT`) |
+
+I used `PERSISTENCE=memory` in the `docker:run` script and the first README example because it's the **zero-setup smoke test** — `npm run docker:build && npm run docker:run`, curl the API, done, no AWS needed. The `PERSISTENCE=dynamodb` variant is shown right below it (needs credentials passed into the container — mount `~/.aws` read-only, or `-e AWS_*`).
+
+The app code is identical in the container, and it's already verified against real DynamoDB (338 tests + the manual pass). The only container-specific unknown is "can the container reach AWS and pick up credentials" — a deployment-environment question.
+
+Want me to prove that too? ~5 min: `docker run -e PERSISTENCE=dynamodb -e AWS_PROFILE=webhook-challenge -v ~/.aws:/home/node/.aws:ro …` and hit it with a real publish, confirming the row lands in DynamoDB. (Needs your SSO session current — `aws sso login --profile webhook-challenge` if it's lapsed.)
+
+## User
+
+Yes please.
+
+## Assistant
+
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && aws sts get-caller-identity --profile webhook-challenge 2>&1 | head -3; echo "exit: $?"; echo "--- aws d…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker build -q -t webhook-registry . 2>&1 | tail -1 && docker run -d --name wr-ddb -p 3013:3000 \ -e PE…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && jv() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; } SID=$(curl -s -X POST localhost:3013/sub…
+- 🔧 `Bash` — docker logs wr-ddb 2>&1 | grep -iE "error|exception|denied|credential|expired|token|resolve" | tail -8
+- 🔧 `Bash` — echo "=== HOME in container ===" && docker exec wr-ddb sh -c 'echo HOME=$HOME; echo USER=$(id -un); whoami' && echo "=== mounted .aws ===" && docker exec wr-ddb…
+- 🔧 `Bash` — docker rm -f wr-ddb >/dev/null 2>&1 cd "E:/projects/TypeScript/Genesys Coding Challenge" echo "host ~/.aws exists?" && ls -d /c/Users/brian/.aws && \ MSYS_NO_PA…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && sleep 1 && jv() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; } SID=$(curl -s -X POST localho…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && read SID EID < /tmp/ddbclean.txt P="--profile webhook-challenge --region eu-central-1" aws dynamodb dele…
+Verified — **the container works against real AWS DynamoDB.**
+
+```
+container POST /subscriptions  →  sub_a161…      ┐
+container POST /events         →  evt_5910…      │ then, read straight from AWS
+                                                 │ (aws dynamodb get-item, bypassing
+aws get-item events/evt_5910…  →  { type: "docker.ddb.test",  ┘  the container):
+                                    data: { via: "container" } }   ✅ same row
+aws get-item subscriptions/sub_a161…  →  ✅ present
+container GET /deliveries?eventId=…   →  del_86f… (from a DynamoDB query)  ✅
+container log error lines: 0
+```
+
+Credentials resolved via SSO from a read-only `~/.aws` mount. Test rows deleted, container + image removed, no strays.
+
+**One Windows gotcha:** Git Bash mangles the `-v` path — you need `MSYS_NO_PATHCONV=1` before the `docker run`. I'll add that to the README.
+
+---
+
+## Your question: DynamoDB Local via Docker — worth it?
+
+**Marginal.** It'd be a `docker-compose.yml` (the `amazon/dynamodb-local` image) plus an npm script so the 17 opt-in DynamoDB contract tests can run with **zero AWS account**. ~20–30 min including testing it (Docker's up now).
+
+- **For:** completes the "nothing here needs AWS" story — a reviewer without an account could run the *full* suite (338), not just 321.
+- **Against:** the DynamoDB adapter is already verified against real AWS (the authoritative target) — and now the container is too. It's another moving part for a redundant verification path.
+
+I lean **skip**, but it's a clean, self-contained add if you want the full-suite-without-AWS property.
+
+- 🔧 `AskUserQuestion` — {"questions":[{"question":"Add DynamoDB Local (docker-compose) so the opt-in DynamoDB tests run without an AWS account?","header":"DynamoDB Local","multiSelect"…
+- 🔧 `Write` — docker-compose.dynamodb-local.yml
+- 🔧 `Write` — scripts/test-dynamodb-local.ts
+- 🔧 `Edit` — package.json
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run typecheck 2>&1 | tail -3 && npm run lint 2>&1 | tail -3 && echo "=== run it ===" && npm run test…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run test:dynamodb:local 2>&1 | grep -E "Tests|Test Files|PASS|FAIL|✓|✗|contract|dynamodb-repositorie…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run test:dynamodb:local 2>&1 | sed -n '/RUN v/,/Duration/p'
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run test:dynamodb:local > /tmp/ddblocal.log 2>&1; echo "exit: $?"; echo "=== full log ==="; cat /tmp…
+- 🔧 `Edit` — scripts/test-dynamodb-local.ts
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npm run typecheck 2>&1 | tail -3 && npm run test:dynamodb:local > /tmp/ddbl2.log 2>&1; echo "exit: $?"; …
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && docker ps -a --filter "name=dynamodb-local" --format '{{.Names}} {{.Status}}' | grep . && echo "STRAY" |…
+- 🔧 `Read` — README.md
+- 🔧 `Read` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Edit` — README.md
+- 🔧 `Edit` — tests/integration/dynamodb-repositories.test.ts
+- 🔧 `Edit` — .dockerignore
+- 🔧 `Read` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/9 - decisions.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && grep -n "no compose file\|npm install && npm test\|Run it" "docs/14 - final-report.md"
+- 🔧 `Edit` — docs/14 - final-report.md
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Edit` — docs/8 - setup.md
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && npx prettier --write README.md package.json "docs/8 - setup.md" "docs/9 - decisions.md" "docs/14 - final…
+- 🔧 `Bash` — cd "E:/projects/TypeScript/Genesys Coding Challenge" && echo "=== yaml valid? ===" && python -c "import yaml; d=yaml.safe_load(open('docker-compose.dynamodb-loc…
