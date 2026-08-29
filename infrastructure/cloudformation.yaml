@@ -1,19 +1,41 @@
 AWSTemplateFormatVersion: '2010-09-09'
 
 Description: >
-  Infrastructure for the Webhook Registry + Dispatcher.
+  Webhook Registry + Dispatcher: three on-demand DynamoDB tables and the global
+  secondary indexes the application's access patterns require (see
+  docs/4 - architecture.md and docs/9 - decisions.md). The application reads the
+  resulting table names from configuration and never calls CloudFormation.
 
-  Three on-demand DynamoDB tables and the global secondary indexes required by
-  the application's access patterns (see docs/4 - architecture.md and
-  docs/9 - decisions.md). The application never talks to CloudFormation; it
-  reads the resulting table names from configuration
-  (DYNAMODB_SUBSCRIPTIONS_TABLE / DYNAMODB_EVENTS_TABLE / DYNAMODB_DELIVERIES_TABLE).
+# ---------------------------------------------------------------------------
+# Capacity: PAY_PER_REQUEST (on-demand) - no capacity to plan at this workload;
+# cost stays proportional to the (tiny) traffic.
+#
+# Not included by design: no compute, queue, or IAM role. The deployment
+# platform (ECS task role, Lambda execution role, ...) owns the application's
+# identity. That identity needs exactly:
+#
+#   Effect: Allow
+#   Action: [ dynamodb:GetItem, dynamodb:PutItem, dynamodb:DeleteItem,
+#             dynamodb:Query, dynamodb:Scan ]   # Scan only for "list subscriptions"
+#   Resource: each table ARN, plus <deliveries/subscriptions ARN>/index/*
+#
+# Tables use the default DeletionPolicy (Delete) for easy teardown of a
+# challenge stack; a production stack should set DeletionPolicy: Retain.
+# ---------------------------------------------------------------------------
 
 Parameters:
   ResourcePrefix:
     Type: String
     Default: webhook-registry
     Description: Prefix for all table names, so the stack can be deployed more than once per account.
+  EnablePointInTimeRecovery:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Continuous backups for the tables. Cheap at this scale; disable only for throwaway stacks.
+
+Conditions:
+  PitrEnabled: !Equals [!Ref EnablePointInTimeRecovery, 'true']
 
 Resources:
   # Access patterns:
@@ -43,7 +65,7 @@ Resources:
           Projection:
             ProjectionType: ALL
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+        PointInTimeRecoveryEnabled: !If [PitrEnabled, true, false]
       SSESpecification:
         SSEEnabled: true
       Tags:
@@ -64,7 +86,7 @@ Resources:
         - AttributeName: id
           KeyType: HASH
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+        PointInTimeRecoveryEnabled: !If [PitrEnabled, true, false]
       SSESpecification:
         SSEEnabled: true
       Tags:
@@ -126,7 +148,7 @@ Resources:
           Projection:
             ProjectionType: ALL
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
+        PointInTimeRecoveryEnabled: !If [PitrEnabled, true, false]
       SSESpecification:
         SSEEnabled: true
       Tags:
@@ -143,3 +165,12 @@ Outputs:
   DeliveriesTableName:
     Description: Value for DYNAMODB_DELIVERIES_TABLE
     Value: !Ref DeliveriesTable
+  DeliveriesTableArn:
+    Description: Delivery table ARN (grant DynamoDB access on this and <arn>/index/*)
+    Value: !GetAtt DeliveriesTable.Arn
+  SubscriptionsTableArn:
+    Description: Subscription table ARN (grant DynamoDB access on this and <arn>/index/*)
+    Value: !GetAtt SubscriptionsTable.Arn
+  EventsTableArn:
+    Description: Event table ARN
+    Value: !GetAtt EventsTable.Arn
