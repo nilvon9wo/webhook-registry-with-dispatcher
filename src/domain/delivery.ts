@@ -48,6 +48,10 @@ export function isTerminal(status: DeliveryStatus): boolean {
   return status === 'delivered' || status === 'failed';
 }
 
+export function isDeliveryStatus(value: string): value is DeliveryStatus {
+  return (DELIVERY_STATUSES as readonly string[]).includes(value);
+}
+
 export interface CreateDeliveryParams {
   readonly id: string;
   readonly eventId: string;

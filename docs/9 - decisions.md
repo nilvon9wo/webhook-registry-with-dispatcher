@@ -72,6 +72,12 @@ It is a living document, updated as implementation proceeds.
   GSI sort-key uniqueness.
 - **Idempotency:** `/events` does **not** accept client idempotency keys in v1.
   Event IDs are stable across retries. Delivery is at-least-once.
+- **`/deliveries` API (prompt 12, bonus):** `GET /deliveries` with optional
+  `?eventId=` / `?subscriptionId=` / `?status=` (AND-combined; unknown `status`
+  → 400), `GET /deliveries/{id}` (404 if unknown). Read-only — delivery state is
+  written only by the dispatcher and recovery. Returns the full delivery record
+  (status, attempts, `lastStatusCode`, `lastError`, `nextAttemptAt`, timestamps).
+  No pagination (out of scope; documented).
 - **No `GET /events/{id}` endpoint.** The spec says events need not be a CRUD
   resource; `/deliveries` (prompt 12) is the observability surface. Events are
   still persisted for durability/audit. A read endpoint would be a reasonable

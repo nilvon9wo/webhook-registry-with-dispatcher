@@ -14,6 +14,7 @@ import type {
 } from './application/ports.js';
 import { SubscriptionService } from './application/subscription-service.js';
 import { EventService, type EventDispatcher } from './application/event-service.js';
+import { DeliveryService } from './application/delivery-service.js';
 import { Dispatcher } from './application/dispatcher.js';
 import { realScheduler, type Scheduler } from './application/scheduler.js';
 import { systemClock, type Clock } from './application/clock.js';
@@ -34,6 +35,7 @@ import { createLogger, type Logger } from './infrastructure/logger.js';
 import { registerHealthRoute } from './http/handlers/health.js';
 import { registerEventRoutes } from './http/handlers/events.js';
 import { registerSubscriptionRoutes } from './http/handlers/subscriptions.js';
+import { registerDeliveryRoutes } from './http/handlers/deliveries.js';
 import { createHttpServer } from './http/server.js';
 import { Router } from './http/router.js';
 import * as http from 'node:http';
@@ -139,10 +141,13 @@ export function buildApplication(
     logger,
   });
 
+  const deliveryService = new DeliveryService(repositories.deliveries);
+
   const router = new Router();
   registerHealthRoute(router);
   registerSubscriptionRoutes(router, subscriptionService);
   registerEventRoutes(router, eventService);
+  registerDeliveryRoutes(router, deliveryService);
 
   const httpServer = createHttpServer({
     router,
