@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { startTestApp, type TestApp } from '../support/test-app.js';
 
 let app: TestApp;
+/** Extra apps started by individual tests; closed in afterEach regardless of outcome. */
+const extraApps: TestApp[] = [];
 
 beforeEach(async () => {
   app = await startTestApp();
@@ -9,6 +11,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await app.close();
+  await Promise.all(extraApps.splice(0).map((extra) => extra.close()));
 });
 
 const VALID_BODY = {
@@ -50,7 +53,20 @@ describe('/subscriptions lifecycle', () => {
     expect((await app.request('GET', `/subscriptions/${id}`)).status).toBe(404);
   });
 
-  it('lists subscriptions and filters by event type', async () => {
+  it('lists all subscriptions when no filter is given', async () => {
+    // Arrange
+    await app.request('POST', '/subscriptions', VALID_BODY);
+    await app.request('POST', '/subscriptions', { ...VALID_BODY, eventType: 'order.deleted' });
+
+    // Act
+    const all = await app.request('GET', '/subscriptions');
+
+    // Assert
+    expect(all.status).toBe(200);
+    expect((all.body as { items: unknown[] }).items).toHaveLength(2);
+  });
+
+  it('filters the list by event type', async () => {
     // Arrange
     await app.request('POST', '/subscriptions', VALID_BODY);
     await app.request('POST', '/subscriptions', { ...VALID_BODY, eventType: 'order.deleted' });
@@ -90,13 +106,13 @@ describe('/subscriptions lifecycle', () => {
   it('rejects a non-https target url when the strict URL policy is in effect', async () => {
     // Arrange — a second app with the production default (https only).
     const strictApp = await startTestApp({ env: { ALLOW_INSECURE_TARGET_URLS: 'false' } });
+    extraApps.push(strictApp);
 
     // Act
     const response = await strictApp.request('POST', '/subscriptions', {
       eventType: 'order.created',
       targetUrl: 'http://insecure.example/hook',
     });
-    await strictApp.close();
 
     // Assert
     expect(response.status).toBe(400);
