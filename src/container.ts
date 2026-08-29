@@ -13,13 +13,11 @@ import type {
   SubscriptionRepository,
 } from './application/ports.js';
 import { SubscriptionService } from './application/subscription-service.js';
-import {
-  EventService,
-  noopEventDispatcher,
-  type EventDispatcher,
-} from './application/event-service.js';
+import { EventService, type EventDispatcher } from './application/event-service.js';
+import { Dispatcher } from './application/dispatcher.js';
 import { systemClock, type Clock } from './application/clock.js';
 import { randomIdGenerator } from './domain/ids.js';
+import { createHttpWebhookClient, type WebhookClient } from './infrastructure/webhook-client.js';
 import {
   InMemoryDeliveryRepository,
   InMemoryEventRepository,
@@ -49,6 +47,8 @@ export interface Application {
   readonly config: AppConfig;
   readonly logger: Logger;
   readonly repositories: Repositories;
+  /** The dispatcher wired into event ingestion, exposed for recovery and tests. */
+  readonly eventDispatcher: EventDispatcher;
   readonly httpServer: http.Server;
 }
 
@@ -87,8 +87,10 @@ export function buildRepositories(config: AppConfig, logger: Logger): Repositori
 
 export interface BuildApplicationOptions {
   readonly clock?: Clock;
-  /** Overrides the event dispatcher (tests inject a spy; real dispatcher wired in a later step). */
+  /** Replaces the real {@link Dispatcher} (tests inject a spy or a fake). */
   readonly eventDispatcher?: EventDispatcher;
+  /** Replaces the real HTTP webhook client (tests inject a fake). */
+  readonly webhookClient?: WebhookClient;
 }
 
 export function buildApplication(
@@ -106,9 +108,21 @@ export function buildApplication(
     targetUrlPolicy: { allowInsecure: config.security.allowInsecureTargetUrls },
   });
 
+  const eventDispatcher =
+    options.eventDispatcher ??
+    new Dispatcher({
+      subscriptions: repositories.subscriptions,
+      deliveries: repositories.deliveries,
+      webhookClient: options.webhookClient ?? createHttpWebhookClient(),
+      clock,
+      ids: randomIdGenerator,
+      logger,
+      config: { webhookTimeoutMs: config.delivery.webhookTimeoutMs },
+    });
+
   const eventService = new EventService({
     repository: repositories.events,
-    dispatcher: options.eventDispatcher ?? noopEventDispatcher,
+    dispatcher: eventDispatcher,
     clock,
     ids: randomIdGenerator,
     logger,
@@ -125,5 +139,5 @@ export function buildApplication(
     maxRequestBodyBytes: config.http.maxRequestBodyBytes,
   });
 
-  return { config, logger, repositories, httpServer };
+  return { config, logger, repositories, eventDispatcher, httpServer };
 }

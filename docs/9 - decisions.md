@@ -80,8 +80,20 @@ It is a living document, updated as implementation proceeds.
   `data`, `createdAt`) and no `Location` header (there is no event GET route).
 - **Dispatcher seam:** `EventService` depends on an `EventDispatcher` interface
   (`dispatch(event): void`, must return promptly and never throw into the
-  caller). Persist is awaited before `dispatch` is called. A no-op
-  implementation is wired until the real dispatcher (prompt 9).
+  caller). Persist is awaited before `dispatch` is called.
+- **Dispatcher (prompt 9):** in-process, `Promise.allSettled` over per-subscription
+  delivery tasks for failure isolation. `dispatch()` is fire-and-forget and
+  swallows/logs background errors; `whenIdle()` lets shutdown and tests await
+  in-flight work. `dispatchEvent()` is also public so recovery can re-drive an
+  event. This step does a **single attempt** per delivery (`delivered` on 2xx,
+  `failed` otherwise); bounded retry is layered on in prompt 11 — the outcome
+  branch is already shaped for it via `classifyOutcome`.
+- **Webhook client:** `fetch` + `AbortController` timeout; never throws (maps to
+  an `AttemptOutcome`); `redirect: 'manual'` so a user-supplied target cannot
+  redirect the server to an internal address (3xx → permanent failure); response
+  body is cancelled (delivery success depends only on status).
+- **Outbound headers:** `Content-Type: application/json`, `X-Webhook-Event-Id`,
+  `X-Webhook-Delivery-Id`, `X-Webhook-Attempt`.
 - **AuthN/AuthZ:** out of scope; documented as an assumption.
 
 ## 4. Explicitly out of scope for the four-hour build

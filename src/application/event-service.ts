@@ -28,11 +28,6 @@ export interface EventDispatcher {
   dispatch(event: WebhookEvent): void;
 }
 
-/** Placeholder dispatcher used until the real dispatcher is wired in. */
-export const noopEventDispatcher: EventDispatcher = {
-  dispatch: () => {},
-};
-
 export interface EventServiceDeps {
   readonly repository: EventRepository;
   readonly dispatcher: EventDispatcher;
