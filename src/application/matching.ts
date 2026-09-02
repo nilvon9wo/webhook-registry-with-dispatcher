@@ -35,5 +35,22 @@ export async function findSubscriptionsForEvent(
   // always eventually consistent. A subscription created milliseconds before a
   // matching event is published can be missed here — a genuine (small)
   // missed-delivery window, not just a duplicate. Documented, not fixed.
-  return repository.list({ eventType: event.type });
+  return (await repository.list())
+      .filter((subscription) => {
+        const eventPieces = event.type.split('.');
+        const subscriberPieces = subscription.eventType.split('.');
+        if (eventPieces.length !== subscriberPieces.length) {
+          return false;
+        }
+        console.log('eventPieces: ' + eventPieces.length);
+        console.log('subscriberPieces: ' + subscriberPieces.length);
+
+        for (let i = 0; i < eventPieces.length; i++) {
+          if (eventPieces[i] !== subscriberPieces[i] && subscriberPieces[i] !== '*') {
+            return false;
+          }
+        }
+
+        return true;
+      });
 }

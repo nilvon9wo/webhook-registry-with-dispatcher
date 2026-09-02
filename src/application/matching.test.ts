@@ -119,4 +119,100 @@ describe('findSubscriptionsForEvent', () => {
     // Assert
     expect(matched).toEqual([]);
   });
+
+  it('returns an empty list when nothing matches despite *', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.*' }));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'user.updated' }));
+
+    // Assert
+    expect(matched).toEqual([]);
+  });
+
+  it('returns the subscription using * matches the event', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.*' }));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'order.updated' }));
+
+    // Assert
+    expect(matched.map((subscription) => subscription.eventType).sort()).toEqual(['order.*']);
+  });
+
+  it('does not return the subscription when not enough *', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.*' }));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'order.updated.status' }));
+
+    // Assert
+    expect(matched).toEqual([]);
+  });
+
+  it('does not return the subscription when mismatched part', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.*.foo' }));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'order.updated.status' }));
+
+    // Assert
+    expect(matched).toEqual([]);
+  });
+
+  it('returns the subscription when enough *', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.*.*.*' }));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'order.updated.status' }));
+
+    // Assert
+    expect(matched).toEqual([]);
+  });
+
+  it('returns the subscription when * is in middle', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.*.status'}));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'order.updated.status' }));
+
+    // Assert
+    expect(matched.map((subscription) => subscription.eventType).sort()).toEqual(['order.*.status']);
+  });
+
+  it('returns the subscription when * is at end', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.updated.*'}));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'order.updated.status' }));
+
+    // Assert
+    expect(matched.map((subscription) => subscription.eventType).sort()).toEqual(['order.updated.*']);
+  });
+
+  it('does not return the subscription when mismatched ending', async () => {
+    // Arrange
+    const repository = new InMemorySubscriptionRepository();
+    await repository.save(aSubscription({ eventType: 'order.updated.somethingelse'}));
+
+    // Act
+    const matched = await findSubscriptionsForEvent(repository, anEvent({ type: 'order.updated.status' }));
+
+    // Assert
+    expect(matched).toEqual([]);
+  });
 });
