@@ -19,7 +19,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-const PROJECT_SLUG = 'E--projects-TypeScript-Genesys-Coding-Challenge';
+const PROJECT_SLUG = 'E--projects-TypeScript-EnvChaos-Coding-Challenge';
 const DEFAULT_OUT = path.join('docs', 'ai-conversation.md');
 
 interface ContentBlock {
@@ -72,7 +72,7 @@ function toolLine(name: string, input: Record<string, unknown>): string {
   const rel = (p: unknown): string =>
     String(p ?? '')
       .replace(/\\/g, '/')
-      .replace(/^.*\/Genesys Coding Challenge\//, '');
+      .replace(/^.*\/EnvChaos Coding Challenge\//, '');
   let detail = '';
   switch (name) {
     case 'Bash':
